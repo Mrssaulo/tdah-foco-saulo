@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>Foco - Calendário TDAH</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <h1>Foco</h1>
+    </div>
+    <div class="topbar-right">
+      <span id="clock" class="clock">--:--</span>
+      <button id="notifBtn" class="notif-btn hidden" title="Ativar notificações">🔔</button>
+    </div>
+  </header>
+
+  <main class="app">
+    <!-- Relógio do dia + tarefa atual -->
+    <section class="card time-card" aria-label="Relógio do dia">
+      <div class="day-ring-wrap">
+        <svg class="day-ring" viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="ring-bg" cx="100" cy="100" r="88" />
+          <circle id="dayRingFill" class="ring-fill" cx="100" cy="100" r="88" />
+        </svg>
+        <div class="day-ring-text">
+          <div id="dayPercent" class="ring-percent">0%</div>
+          <div id="dayLabel" class="ring-label">do dia</div>
+          <div id="dayTimeLeft" class="ring-time">--:-- restantes</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Agora / Próximo -->
+    <section class="card agenda-card" aria-label="Agenda de agora">
+      <header class="card-head">
+        <h2>Agora</h2>
+        <button id="newTaskBtn" class="btn-primary" aria-label="Adicionar tarefa">+ Tarefa</button>
+      </header>
+      <div id="currentTask" class="current-task empty">
+        <div class="empty-state">Nada por agora. Toque em <strong>+ Tarefa</strong>.</div>
+      </div>
+
+      <h2 class="next-title">Próximo</h2>
+      <ul id="nextTasks" class="next-list"></ul>
+    </section>
+
+    <!-- Ações rápidas: Pomodoro + Captura -->
+    <section class="card actions-card" aria-label="Ações rápidas">
+      <div class="actions-grid">
+        <button id="pomodoroBtn" class="action-tile" aria-label="Iniciar pomodoro">
+          <span class="action-icon">●</span>
+          <span class="action-label">Pomodoro</span>
+        </button>
+        <button id="captureBtn" class="action-tile" aria-label="Capturar pensamento">
+          <span class="action-icon">+</span>
+          <span class="action-label">Capturar</span>
+        </button>
+        <button id="routinesBtn" class="action-tile" aria-label="Abrir rotinas">
+          <span class="action-icon">☀</span>
+          <span class="action-label">Rotinas</span>
+        </button>
+        <button id="inboxBtn" class="action-tile" aria-label="Abrir caixa de entrada">
+          <span class="action-icon">✉</span>
+          <span class="action-label">Caixa</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Rotinas (visível quando aberto) -->
+    <section id="routinesPanel" class="card routines-card hidden" aria-label="Rotinas">
+      <header class="card-head">
+        <h2>Rotinas</h2>
+        <button id="addRoutineBtn" class="btn-ghost">+ Item</button>
+      </header>
+      <div class="routine-block">
+        <h3>Manhã</h3>
+        <ul id="routineMorning" class="routine-list"></ul>
+      </div>
+      <div class="routine-block">
+        <h3>Tarde</h3>
+        <ul id="routineAfternoon" class="routine-list"></ul>
+      </div>
+      <div class="routine-block">
+        <h3>Noite</h3>
+        <ul id="routineEvening" class="routine-list"></ul>
+      </div>
+    </section>
+
+    <!-- Inbox de capturas -->
+    <section id="inboxPanel" class="card inbox-card hidden" aria-label="Caixa de entrada">
+      <header class="card-head">
+        <h2>Caixa de entrada</h2>
+        <span id="inboxCount" class="badge">0</span>
+      </header>
+      <ul id="inboxList" class="inbox-list"></ul>
+    </section>
+
+    <!-- IA -->
+    <section id="iaPanel" class="card ia-card hidden" aria-label="Assistente IA">
+      <header class="card-head">
+        <h2>Assistente</h2>
+        <span id="iaStatus" class="badge">pronto</span>
+      </header>
+      <div class="ia-quick">
+        <button class="ia-btn" data-action="now">O que faço agora?</button>
+        <button class="ia-btn" data-action="break">Quebrar tarefa</button>
+        <button class="ia-btn" data-action="triage">Triar caixa</button>
+        <button class="ia-btn" data-action="reflect">Reflexão do dia</button>
+      </div>
+      <form id="iaForm" class="ia-form">
+        <label class="field">
+          <span>Pedido livre</span>
+          <textarea id="iaPrompt" rows="2" maxlength="500" placeholder="Pergunte, peça ajuda, despeje o que vier."></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Enviar</button>
+        </div>
+      </form>
+      <div id="iaReply" class="ia-reply hidden"></div>
+    </section>
+  </main>
+
+  <!-- Modal de tarefa -->
+  <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="taskModalTitle">Nova tarefa</h2>
+        <button id="taskModalClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <form id="taskForm" class="form">
+        <label class="field">
+          <span>Título</span>
+          <input id="taskTitle" type="text" required maxlength="80" placeholder="Ex: Responder e-mails" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Início</span>
+            <input id="taskStart" type="time" required />
+          </label>
+          <label class="field">
+            <span>Duração (min)</span>
+            <input id="taskDuration" type="number" min="5" max="480" value="30" required />
+          </label>
+        </div>
+        <label class="field">
+          <span>Categoria</span>
+          <select id="taskCategory">
+            <option value="trabalho">Trabalho</option>
+            <option value="estudo">Estudo</option>
+            <option value="pessoal">Pessoal</option>
+            <option value="saude">Saúde</option>
+            <option value="descanso">Descanso</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" id="taskDelete" class="btn-danger hidden">Excluir</button>
+          <button type="submit" class="btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Pomodoro -->
+  <div id="pomodoroModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pomodoroTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="pomodoroTitle">Pomodoro</h2>
+        <button id="pomodoroClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <div class="pomodoro-wrap">
+        <div class="pomodoro-task" id="pomodoroTaskLabel">Sem tarefa vinculada</div>
+        <div class="pomodoro-time" id="pomodoroTime">25:00</div>
+        <div class="pomodoro-controls">
+          <button id="pomodoroStart" class="btn-primary">Iniciar</button>
+          <button id="pomodoroPause" class="btn-ghost hidden">Pausar</button>
+          <button id="pomodoroReset" class="btn-ghost">Zerar</button>
+        </div>
+        <div class="pomodoro-mode">
+          <button data-mode="focus" class="mode-btn active">Foco 25</button>
+          <button data-mode="short" class="mode-btn">Pausa 5</button>
+          <button data-mode="long" class="mode-btn">Pausa 15</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de captura -->
+  <div id="captureModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2>Capturar</h2>
+        <button id="captureClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <form id="captureForm" class="form">
+        <label class="field">
+          <span>Pensamento, ideia, lembrete</span>
+          <textarea id="captureText" rows="4" maxlength="500" placeholder="Anota aqui sem se preocupar. Você organiza depois." autofocus></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Salvar na caixa</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="Navegação">
+    <button class="tab active" data-tab="agenda">Hoje</button>
+    <button class="tab" data-tab="routines">Rotinas</button>
+    <button class="tab" data-tab="inbox">Caixa</button>
+    <button class="tab" data-tab="ia">IA</button>
+  </nav>
+
+  <script src="alarm.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
