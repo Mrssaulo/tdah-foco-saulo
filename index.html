@@ -104,6 +104,18 @@
     </section>
 
     <!-- IA -->
+    <section id="remindersPanel" class="card reminders-card hidden" aria-label="Lembretes de datas">
+      <header class="card-head">
+        <h2>Lembretes</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="remindersCount" class="badge">0</span>
+          <button id="newReminderBtn" class="btn-primary">+ Lembrete</button>
+        </div>
+      </header>
+      <ul id="remindersList" class="reminders-list"></ul>
+    </section>
+
+    <!-- IA -->
     <section id="iaPanel" class="card ia-card hidden" aria-label="Assistente IA">
       <header class="card-head">
         <h2>Assistente</h2>
@@ -127,6 +139,34 @@
       <div id="iaReply" class="ia-reply hidden"></div>
     </section>
   </main>
+
+  <!-- Modal de lembrete -->
+  <div id="reminderModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reminderModalTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="reminderModalTitle">Novo lembrete</h2>
+        <button id="reminderModalClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <form id="reminderForm" class="form">
+        <label class="field">
+          <span>Título</span>
+          <input id="reminderTitle" type="text" required maxlength="80" placeholder="Ex: Aniversário do João" />
+        </label>
+        <label class="field">
+          <span>Data</span>
+          <input id="reminderDate" type="date" required />
+        </label>
+        <label class="field">
+          <span>Nota (opcional)</span>
+          <textarea id="reminderNote" rows="3" maxlength="300" placeholder="Cole aqui a mensagem original ou uma observação."></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" id="reminderDelete" class="btn-danger hidden">Excluir</button>
+          <button type="submit" class="btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Modal de tarefa -->
   <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
@@ -215,6 +255,7 @@
     <button class="tab active" data-tab="agenda">Hoje</button>
     <button class="tab" data-tab="routines">Rotinas</button>
     <button class="tab" data-tab="inbox">Caixa</button>
+    <button class="tab" data-tab="reminders">Datas</button>
     <button class="tab" data-tab="ia">IA</button>
   </nav>
 

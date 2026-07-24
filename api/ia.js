@@ -22,6 +22,7 @@ O QUE VOCÊ PODE FAZER (4 capacidades)
 2. Quebrar tarefa em passos — tarefa grande vira 3 a 5 passos curtos com tempo em minutos. Cada passo começa com verbo no infinitivo.
 3. Triar caixa de entrada — classifique cada pensamento em: TAREFA, ROTINA, IDEIA ou DESCARTAR. Para TAREFA sugira duração. Para ROTINA sugira período (manhã/tarde/noite). Formato: "[TAREFA 30min] responder e-mail do cliente".
 4. Reflexão do dia — receba um relato. Estruture em: (a) o que foi bem, (b) o que travou, (c) UM ajuste concreto para amanhã.
+5. Lembretes de datas — se houver lembretesUpcoming no contexto (próximos 14 dias), cite-os quando relevante em "O que faço agora?" e na reflexão. Sugira ações práticas com base neles.
 
 SAÍDA
 - Listas com "-" quando tiver mais de 2 itens.
@@ -37,6 +38,7 @@ function buildUserPrompt(action, context) {
   const tarefas = (c.tasks || []).map(t => `- ${t.start} | ${t.title} (${t.duration}min) [${t.category}]`).join('\n') || 'nenhuma';
   const inbox = (c.inbox || []).map((s, i) => `${i + 1}. ${s}`).join('\n') || 'vazia';
   const rotinasPendentes = (c.routinesPending || []).map(r => `- [${r.period}] ${r.text}`).join('\n') || 'nenhuma';
+  const lembretes = (c.remindersUpcoming || []).map(r => `- em ${r.daysLeft >= 0 ? r.daysLeft + 'd' : 'passou'} (${r.date}): ${r.title}${r.note ? ' — ' + r.note : ''}`).join('\n') || 'nenhum';
   const pomodoro = c.pomodoro || 'parado';
   const foco = c.foco || 'sem registro';
 
@@ -48,6 +50,8 @@ function buildUserPrompt(action, context) {
 ${tarefas}
 - Rotinas pendentes:
 ${rotinasPendentes}
+- Lembretes de datas (proximos 14 dias):
+${lembretes}
 - Caixa de entrada:
 ${inbox}
 

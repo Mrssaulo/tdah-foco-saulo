@@ -125,6 +125,49 @@ function checkRoutines(routines, routineDone, onAlarm) {
   });
 }
 
+// Marcos de aviso para lembretes (em dias antes da data)
+const REMINDER_LEAD_DAYS = [7, 3, 1];
+
+function daysUntil(dateKey) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+function checkUpcomingReminders(reminders, onAlarm) {
+  if (!Array.isArray(reminders)) return;
+  reminders.forEach(r => {
+    if (!r || !r.dateKey) return;
+    const left = daysUntil(r.dateKey);
+    // Marcos: 7, 3, 1 dias antes + dia (0)
+    const inLead = REMINDER_LEAD_DAYS.includes(left);
+    const isToday = left === 0;
+    if (!inLead && !isToday) return;
+    // chave de dedupe por lembrete + marco (lead ou today)
+    const milestone = isToday ? 'today' : left + 'd';
+    const key = 'reminder-' + r.id + '-' + milestone;
+    if (wasAlerted(key)) return;
+    markAlerted(key);
+    let title, body;
+    const dateStr = new Date(r.dateKey + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+    if (isToday) {
+      title = 'Lembrete: hoje';
+      body = (r.title || '') + ' — ' + dateStr;
+    } else if (left === 1) {
+      title = 'Lembrete: amanha';
+      body = (r.title || '') + ' — ' + dateStr;
+    } else {
+      title = 'Lembrete: ' + left + ' dias';
+      body = (r.title || '') + ' — ' + dateStr;
+    }
+    if (r.note) body += '\n' + r.note;
+    onAlarm({ title, body, tag: key });
+  });
+}
+
 function todayKey() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -141,5 +184,6 @@ window.FocoAlarm = {
   vibrate,
   checkUpcomingTasks,
   checkRoutines,
+  checkUpcomingReminders,
   cleanOldAlerts
 };

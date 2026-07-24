@@ -392,6 +392,58 @@ body {
 /* Util */
 .hidden { display: none !important; }
 
+/* Lembretes de data */
+.reminders-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.reminders-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-height: var(--tap);
+}
+.reminders-list .rm-date {
+  flex: 0 0 auto;
+  text-align: center;
+  background: rgba(108, 140, 255, 0.12);
+  border: 1px solid rgba(108, 140, 255, 0.3);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+}
+.reminders-list .rm-date .rm-day { font-size: 18px; font-weight: 700; line-height: 1; }
+.reminders-list .rm-date .rm-month { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+.reminders-list .rm-info { flex: 1; min-width: 0; }
+.reminders-list .rm-title { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminders-list .rm-when { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.reminders-list .rm-when .urg {
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 99px;
+  margin-left: 6px;
+}
+.urg-today { background: rgba(248, 113, 113, 0.2); color: #fbc4c4; }
+.urg-soon { background: rgba(251, 191, 36, 0.2); color: #fde2a3; }
+.urg-week { background: rgba(108, 140, 255, 0.2); color: #b9c8ff; }
+.urg-far { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.reminders-list .rm-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.reminders-list .rm-btn {
+  background: rgba(108, 140, 255, 0.15);
+  color: var(--accent);
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reminders-list .rm-btn.del { background: rgba(248, 113, 113, 0.15); color: var(--bad); }
+.reminders-list .rm-btn:active { transform: scale(0.95); }
+.reminders-empty { color: var(--muted); text-align: center; padding: 24px; font-size: 14px; }
+
 /* IA */
 .ia-quick {
   display: grid;

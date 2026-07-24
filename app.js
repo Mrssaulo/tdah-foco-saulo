@@ -12,6 +12,7 @@ const defaultState = {
   },
   routineDone: {},    // { 'YYYY-MM-DD::morning::itemId': true }
   inbox: [],          // { id, text, createdAt }
+  reminders: [],      // { id, title, dateKey, note, source, createdAt }
   pomodoro: { mode: 'focus', totalSec: 25 * 60, remainingSec: 25 * 60, running: false, taskId: null },
   lastResetDate: null,
 };
@@ -389,6 +390,7 @@ function setTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.getElementById('routinesPanel').classList.toggle('hidden', name !== 'routines');
   document.getElementById('inboxPanel').classList.toggle('hidden', name !== 'inbox');
+  document.getElementById('remindersPanel').classList.toggle('hidden', name !== 'reminders');
   document.getElementById('iaPanel').classList.toggle('hidden', name !== 'ia');
   // Em telas pequenas, esconde o relógio + agenda quando outras tabs estão ativas
   const small = window.innerWidth < 720;
@@ -410,6 +412,168 @@ function checkDailyReset() {
   }
 }
 
+// ===== Lembretes =====
+function dateKeyFromInput(v) {
+  // v = 'YYYY-MM-DD' -> 'YYYY-MM-DD'
+  return v;
+}
+function dateKeyToInput(dateKey) {
+  return dateKey; // já no formato
+}
+function todayDateInput() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatReminderDate(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+}
+function urgencyFor(daysLeft) {
+  if (daysLeft < 0) return { cls: 'urg-far', label: 'passou' };
+  if (daysLeft === 0) return { cls: 'urg-today', label: 'hoje' };
+  if (daysLeft === 1) return { cls: 'urg-today', label: 'amanha' };
+  if (daysLeft <= 3) return { cls: 'urg-soon', label: daysLeft + ' dias' };
+  if (daysLeft <= 7) return { cls: 'urg-week', label: daysLeft + ' dias' };
+  return { cls: 'urg-far', label: daysLeft + ' dias' };
+}
+function dayMonthLabel(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  const months = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  return { day: String(d).padStart(2,'0'), month: months[m-1] };
+}
+
+function renderReminders() {
+  const ul = document.getElementById('remindersList');
+  ul.innerHTML = '';
+  document.getElementById('remindersCount').textContent = state.reminders.length;
+  if (state.reminders.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'reminders-empty';
+    li.textContent = 'Nenhum lembrete. Toque em + Lembrete para registrar uma data.';
+    ul.appendChild(li);
+    return;
+  }
+  const sorted = [...state.reminders].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  sorted.forEach(r => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const [y,m,d] = r.dateKey.split('-').map(Number);
+    const target = new Date(y, m-1, d); target.setHours(0,0,0,0);
+    const daysLeft = Math.round((target - today) / (1000 * 60 * 60 * 24));
+    const urg = urgencyFor(daysLeft);
+    const dm = dayMonthLabel(r.dateKey);
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <div class="rm-date">
+        <div class="rm-day">${dm.day}</div>
+        <div class="rm-month">${dm.month}</div>
+      </div>
+      <div class="rm-info">
+        <div class="rm-title"></div>
+        <div class="rm-when"></div>
+      </div>
+      <div class="rm-actions">
+        <button class="rm-btn" data-act="task">→ Tarefa</button>
+        <button class="rm-btn" data-act="ia">→ IA</button>
+        <button class="rm-btn del" data-act="del">×</button>
+      </div>
+    `;
+    li.querySelector('.rm-title').textContent = r.title;
+    li.querySelector('.rm-when').innerHTML = `${formatReminderDate(r.dateKey)} <span class="urg ${urg.cls}">${urg.label}</span>`;
+    li.querySelector('[data-act="task"]').addEventListener('click', () => convertReminderToTask(r.id));
+    li.querySelector('[data-act="ia"]').addEventListener('click', () => askIaAboutReminder(r.id));
+    li.querySelector('[data-act="del"]').addEventListener('click', () => deleteReminder(r.id));
+    ul.appendChild(li);
+  });
+}
+
+function openReminderModal(id) {
+  const modal = document.getElementById('reminderModal');
+  const title = document.getElementById('reminderModalTitle');
+  const del = document.getElementById('reminderDelete');
+  const form = document.getElementById('reminderForm');
+  form.reset();
+  if (id) {
+    const r = state.reminders.find(x => x.id === id);
+    if (!r) return;
+    title.textContent = 'Editar lembrete';
+    del.classList.remove('hidden');
+    document.getElementById('reminderTitle').value = r.title;
+    document.getElementById('reminderDate').value = dateKeyToInput(r.dateKey);
+    document.getElementById('reminderNote').value = r.note || '';
+    form.dataset.editId = id;
+  } else {
+    title.textContent = 'Novo lembrete';
+    del.classList.add('hidden');
+    document.getElementById('reminderDate').value = todayDateInput();
+    form.dataset.editId = '';
+  }
+  modal.classList.remove('hidden');
+}
+function closeReminderModal() { document.getElementById('reminderModal').classList.add('hidden'); }
+function saveReminderFromForm(e) {
+  e.preventDefault();
+  const title = document.getElementById('reminderTitle').value.trim();
+  const dateKey = document.getElementById('reminderDate').value;
+  const note = document.getElementById('reminderNote').value.trim();
+  if (!title || !dateKey) return;
+  const editId = document.getElementById('reminderForm').dataset.editId;
+  if (editId) {
+    const r = state.reminders.find(x => x.id === editId);
+    if (r) Object.assign(r, { title, dateKey, note });
+  } else {
+    state.reminders.push({ id: uid(), title, dateKey, note, source: 'manual', createdAt: Date.now() });
+  }
+  saveState();
+  closeReminderModal();
+  renderAll();
+}
+function deleteReminderFromForm() {
+  const id = document.getElementById('reminderForm').dataset.editId;
+  if (!id) return;
+  deleteReminder(id);
+  closeReminderModal();
+}
+function deleteReminder(id) {
+  state.reminders = state.reminders.filter(x => x.id !== id);
+  saveState();
+  renderAll();
+}
+function convertReminderToTask(id) {
+  const r = state.reminders.find(x => x.id === id);
+  if (!r) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const [y,m,d] = r.dateKey.split('-').map(Number);
+  const target = new Date(y, m-1, d); target.setHours(0,0,0,0);
+  // Se ja passou, tarefa pra hoje. Se hoje, em 5 min. Se futuro, 9h da manha do dia.
+  const startDate = (target.getTime() < today.getTime()) ? new Date() :
+                    (target.getTime() === today.getTime()) ? new Date(Date.now() + 5*60*1000) :
+                    (function(){ const dt = new Date(target); dt.setHours(9,0,0,0); return dt; })();
+  const startMin = startDate.getHours() * 60 + startDate.getMinutes();
+  const dk = startDate.getFullYear() + '-' + String(startDate.getMonth()+1).padStart(2,'0') + '-' + String(startDate.getDate()).padStart(2,'0');
+  state.tasks.push({
+    id: uid(),
+    title: r.title,
+    startMinutes: startMin,
+    durationMin: 30,
+    category: 'pessoal',
+    dateKey: dk
+  });
+  saveState();
+  renderAll();
+  setTab('agenda');
+}
+function askIaAboutReminder(id) {
+  const r = state.reminders.find(x => x.id === id);
+  if (!r) return;
+  setTab('ia');
+  const promptText = 'Me ajuda a me preparar para: ' + r.title + ' em ' + formatReminderDate(r.dateKey) + '.' + (r.note ? ' Contexto: ' + r.note : '');
+  document.getElementById('iaPrompt').value = promptText;
+  // dispara depois da troca de tab
+  setTimeout(() => callIa('free', { prompt: promptText }), 100);
+}
+
 // ===== Render geral =====
 function renderAll() {
   checkDailyReset();
@@ -417,6 +581,7 @@ function renderAll() {
   renderAgenda();
   renderRoutines();
   renderInbox();
+  renderReminders();
   updatePomodoroLabel();
   renderPomodoro();
 }
@@ -455,7 +620,21 @@ function buildIaContext() {
     const s = state.pomodoro.remainingSec % 60;
     pomodoro = `rodando (${state.pomodoro.mode}, faltam ${m}:${String(s).padStart(2, '0')})`;
   }
-  return { tasks, inbox, routinesPending, pomodoro };
+  // lembretes dentro de 14 dias
+  const remindersUpcoming = (state.reminders || []).map(r => ({
+    title: r.title,
+    date: r.dateKey,
+    daysLeft: daysUntilDate(r.dateKey),
+    note: r.note || ''
+  })).filter(r => r.daysLeft >= -1 && r.daysLeft <= 14);
+  return { tasks, inbox, routinesPending, pomodoro, remindersUpcoming };
+}
+
+function daysUntilDate(dateKey) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const target = new Date(y, m - 1, d); target.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
 }
 
 async function callIa(action, extra) {
@@ -505,6 +684,12 @@ function bindEvents() {
   document.getElementById('routinesBtn').addEventListener('click', () => setTab('routines'));
   document.getElementById('inboxBtn').addEventListener('click', () => setTab('inbox'));
   document.getElementById('addRoutineBtn').addEventListener('click', addRoutineItem);
+
+  // Lembretes
+  document.getElementById('newReminderBtn').addEventListener('click', () => openReminderModal());
+  document.getElementById('reminderModalClose').addEventListener('click', closeReminderModal);
+  document.getElementById('reminderForm').addEventListener('submit', saveReminderFromForm);
+  document.getElementById('reminderDelete').addEventListener('click', deleteReminderFromForm);
 
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
 
@@ -603,6 +788,7 @@ function init() {
     if (window.FocoAlarm) {
       window.FocoAlarm.checkUpcomingTasks(state.tasks, a => window.FocoAlarm.fireAlarm(a.title, a.body, { tag: a.tag }));
       window.FocoAlarm.checkRoutines(state.routines, state.routineDone, a => window.FocoAlarm.fireAlarm(a.title, a.body, { tag: a.tag }));
+      window.FocoAlarm.checkUpcomingReminders(state.reminders, a => window.FocoAlarm.fireAlarm(a.title, a.body, { tag: a.tag }));
     }
   }, 30 * 1000);
 
