@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.montalvex.foco",
+    "sha256_cert_fingerprints": ["E0:8B:4E:35:A8:6B:29:D0:28:8B:A8:F7:BF:F5:6C:60:97:AC:64:C4:1C:75:B9:67:F6:C9:FA:1C:5C:0A:F9:E6"]
+  }
+}]
