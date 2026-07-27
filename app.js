@@ -20,6 +20,11 @@ const defaultState = {
   // IA: histórico de conversas (últimas N sessões) + memória curta entre dias
   iaHistory: [],      // [{ id, startedAt, action, prompt, reply }]
   iaMemory: [],       // [{ dateKey, summary, tipo, createdAt }]
+  // Gamificação
+  xp: 0,              // XP total acumulado
+  badges: [],         // ['streak-7', 'pomo-10', 'task-50', etc]
+  lastActiveDate: null, // YYYY-MM-DD do último acesso (pra calcular streak)
+  xpToday: { date: null, amount: 0 }, // XP ganho hoje (reseta à meia-noite)
 };
 
 // Limites
@@ -60,6 +65,289 @@ function formatMin(mins) {
   return `${h}:${m}`;
 }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ===== Gamificação: XP, nível, streak, badges =====
+const XP_REWARDS = {
+  task: 15,           // concluir tarefa
+  routine: 8,         // item de rotina marcado
+  pomodoro: 25,       // pomodoro de foco concluído
+  reflect: 30,        // fazer reflexão do dia
+  capture: 5,         // capturar na caixa
+  firstVisit: 10,     // primeira ação do dia
+};
+const LEVELS = [
+  { level: 1,  xpRequired: 0,    title: 'Iniciante' },
+  { level: 2,  xpRequired: 50,   title: 'Aprendiz' },
+  { level: 3,  xpRequired: 150,  title: 'Dedicado' },
+  { level: 4,  xpRequired: 350,  title: 'Focado' },
+  { level: 5,  xpRequired: 700,  title: 'Disciplinado' },
+  { level: 6,  xpRequired: 1200, title: 'Centrado' },
+  { level: 7,  xpRequired: 2000, title: 'Imparável' },
+  { level: 8,  xpRequired: 3200, title: 'Mestre do Foco' },
+  { level: 9,  xpRequired: 5000, title: 'Lendário' },
+  { level: 10, xpRequired: 8000, title: 'Transcendente' },
+];
+const BADGES_DEF = [
+  { id: 'first-step',     icon: '🌱', name: 'Primeiro passo',         desc: 'Ganhou XP pela primeira vez',          check: s => s.xp >= 10 },
+  { id: 'streak-3',       icon: '🔥', name: '3 dias seguidos',        desc: 'Usou o Foco 3 dias seguidos',         check: s => s.streak >= 3 },
+  { id: 'streak-7',       icon: '🔥', name: 'Uma semana inteira',     desc: '7 dias seguidos usando o Foco',       check: s => s.streak >= 7 },
+  { id: 'streak-30',      icon: '��', name: '30 dias seguidos',       desc: 'Um mês sem quebrar a sequência',     check: s => s.streak >= 30 },
+  { id: 'pomo-1',         icon: '🍅', name: 'Primeiro pomodoro',      desc: 'Concluiu 1 pomodoro de foco',         check: s => s.pomoCount >= 1 },
+  { id: 'pomo-10',        icon: '🍅', name: '10 pomodoros',           desc: 'Concluiu 10 pomodoros de foco',       check: s => s.pomoCount >= 10 },
+  { id: 'pomo-50',        icon: '🏅', name: '50 pomodoros',           desc: 'Concluiu 50 pomodoros de foco',       check: s => s.pomoCount >= 50 },
+  { id: 'task-10',        icon: '✅', name: '10 tarefas cumpridas',   desc: 'Marcou 10 tarefas como concluídas',   check: s => s.taskCount >= 10 },
+  { id: 'task-50',        icon: '✅', name: '50 tarefas cumpridas',   desc: 'Marcou 50 tarefas como concluídas',   check: s => s.taskCount >= 50 },
+  { id: 'routine-week',   icon: '☀️', name: 'Rotina completa',        desc: 'Marcou todos os itens de uma rotina', check: s => s.fullRoutines >= 1 },
+  { id: 'reflect-1',      icon: '🪞', name: 'Primeira reflexão',       desc: 'Fez a primeira reflexão do dia',      check: s => s.reflectCount >= 1 },
+  { id: 'reflect-7',      icon: '🪞', name: '7 reflexões',            desc: 'Fez 7 reflexões do dia',              check: s => s.reflectCount >= 7 },
+  { id: 'level-5',        icon: '⭐', name: 'Nível 5',                desc: 'Chegou ao nível 5',                   check: s => s.level >= 5 },
+  { id: 'level-10',       icon: '👑', name: 'Nível 10',               desc: 'Chegou ao nível máximo',              check: s => s.level >= 10 },
+];
+
+function levelFromXp(xp) {
+  let lvl = LEVELS[0];
+  for (const l of LEVELS) { if (xp >= l.xpRequired) lvl = l; }
+  return lvl;
+}
+function xpForNextLevel(xp) {
+  const cur = levelFromXp(xp);
+  const idx = LEVELS.findIndex(l => l.level === cur.level);
+  const next = LEVELS[idx + 1];
+  if (!next) return { current: xp - cur.xpRequired, needed: 0, done: true, pct: 1, cur, next: null };
+  const current = xp - cur.xpRequired;
+  const needed = next.xpRequired - cur.xpRequired;
+  return { current, needed, done: false, pct: clamp(current / needed, 0, 1), cur, next };
+}
+
+// Recalcula streak (precisa do lastActiveDate salvo)
+function computeStreak() {
+  const last = state.lastActiveDate;
+  const today = todayKey();
+  if (!last) return 0;
+  const [y, m, d] = last.split('-').map(Number);
+  const lastD = new Date(y, m - 1, d); lastD.setHours(0,0,0,0);
+  const todayD = new Date(); todayD.setHours(0,0,0,0);
+  const diffDays = Math.round((todayD - lastD) / 86400000);
+  if (diffDays === 0) {
+    // Mesmo dia, mantém o streak atual (campo derivado não persistido, inferido de quantos dias consecutivos foram ativos — usamos lastStreakCount)
+    return state.streak || 1;
+  }
+  if (diffDays === 1) {
+    // Voltou no dia seguinte → streak + 1
+    return (state.streak || 0) + 1;
+  }
+  // Pulou dias: streak reinicia em 1 (porque ele tá ativo hoje)
+  return 1;
+}
+
+// Conta quantos pomodoros / tarefas / reflexões já foram concluídos na história
+function computeAggregateCounts() {
+  const pomoCount = (state.pomodoroLog || []).filter(p => p.kind === 'pomodoro').length;
+  // taskCount = chaves únicas já marcadas como done (inclui repetições entre dias, mas queremos total de conclusões)
+  const taskCount = Object.keys(state.taskDone || {}).length;
+  const reflectCount = (state.iaMemory || []).filter(m => m.tipo === 'reflect').length
+                     + (state.iaHistory || []).filter(h => h.action === 'reflect').length;
+  // Rotinas completas: dias em que todos os itens de uma rotina foram cumpridos
+  let fullRoutines = 0;
+  ['morning','afternoon','evening'].forEach(period => {
+    const items = state.routines[period] || [];
+    if (items.length === 0) return;
+    const itemIds = new Set(items.map(it => it.id));
+    // Conta ocorrências por dia
+    const byDay = {};
+    Object.keys(state.routineDone || {}).forEach(k => {
+      const parts = k.split('::');
+      if (parts.length !== 3) return;
+      const dk = parts[0];
+      const per = parts[1];
+      const itId = parts[2];
+      if (per === period && itemIds.has(itId)) {
+        byDay[dk] = byDay[dk] || new Set();
+        byDay[dk].add(itId);
+      }
+    });
+    Object.values(byDay).forEach(setIds => {
+      if (setIds.size === items.length) fullRoutines++;
+    });
+  });
+  return { pomoCount, taskCount, reflectCount, fullRoutines };
+}
+
+function playerState() {
+  const lvl = levelFromXp(state.xp || 0);
+  const streak = computeStreak();
+  const agg = computeAggregateCounts();
+  return { level: lvl.level, title: lvl.title, xp: state.xp || 0, streak, ...agg };
+}
+
+// Marca presença do dia de hoje (chamado uma vez por dia)
+function registerPresence() {
+  const today = todayKey();
+  if (state.lastActiveDate !== today) {
+    // Verifica se é dia consecutivo
+    const last = state.lastActiveDate;
+    let newStreak = 1;
+    if (last) {
+      const [y, m, d] = last.split('-').map(Number);
+      const lastD = new Date(y, m - 1, d); lastD.setHours(0,0,0,0);
+      const todayD = new Date(); todayD.setHours(0,0,0,0);
+      const diff = Math.round((todayD - lastD) / 86400000);
+      if (diff === 1) newStreak = (state.streak || 0) + 1;
+      else if (diff === 0) newStreak = state.streak || 1;
+      else newStreak = 1;
+    }
+    state.streak = newStreak;
+    state.lastActiveDate = today;
+    state.xpToday = { date: today, amount: 0 };
+    // Bonus diário de presença
+    addXp(XP_REWARDS.firstVisit, 'Presença', null);
+  }
+}
+
+function addXp(amount, label, originEl) {
+  const before = state.xp || 0;
+  state.xp = before + amount;
+  // marca no xp de hoje
+  if (!state.xpToday || state.xpToday.date !== todayKey()) {
+    state.xpToday = { date: todayKey(), amount: 0 };
+  }
+  state.xpToday.amount += amount;
+  saveState();
+  // checa level up
+  const beforeLvl = levelFromXp(before).level;
+  const afterLvl = levelFromXp(state.xp).level;
+  if (afterLvl > beforeLvl) onLevelUp(beforeLvl, afterLvl);
+  // checa novos badges
+  checkBadges();
+  // UI
+  renderPlayer();
+  // flutua "+XP" perto do botão que deu origem
+  if (originEl) floatXp(amount, label, originEl);
+}
+
+function floatXp(amount, label, originEl) {
+  const layer = document.getElementById('fxLayer');
+  if (!layer) return;
+  const rect = originEl.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'xp-float';
+  el.innerHTML = `<span class="xf-amt">+${amount}</span><span class="xf-lbl">${label}</span>`;
+  el.style.left = (rect.left + rect.width / 2) + 'px';
+  el.style.top = (rect.top + window.scrollY) + 'px';
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), 1600);
+}
+
+function onLevelUp(prev, next) {
+  const layer = document.getElementById('fxLayer');
+  if (!layer) return;
+  const lvl = LEVELS.find(l => l.level === next);
+  // overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'levelup-overlay';
+  overlay.innerHTML = `
+    <div class="lu-burst"></div>
+    <div class="lu-card">
+      <div class="lu-icon">⚡</div>
+      <div class="lu-pre">Subiu de nível!</div>
+      <div class="lu-lvl">${prev} → ${next}</div>
+      <div class="lu-title">${lvl ? lvl.title : ''}</div>
+    </div>
+  `;
+  layer.appendChild(overlay);
+  // confete
+  burstConfetti(40);
+  setTimeout(() => overlay.remove(), 2400);
+}
+
+function burstConfetti(n) {
+  const layer = document.getElementById('fxLayer');
+  if (!layer) return;
+  const colors = ['#6c8cff', '#a78bfa', '#fbbf24', '#4ade80', '#f472b6', '#22d3ee'];
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = (Math.random() * 100) + 'vw';
+    c.style.background = colors[i % colors.length];
+    c.style.animationDelay = (Math.random() * 0.3) + 's';
+    c.style.animationDuration = (1.4 + Math.random() * 1.2) + 's';
+    layer.appendChild(c);
+    setTimeout(() => c.remove(), 3000);
+  }
+}
+
+function checkBadges() {
+  const before = new Set(state.badges || []);
+  const earned = new Set(state.badges || []);
+  const s = playerState();
+  BADGES_DEF.forEach(b => {
+    if (!earned.has(b.id) && b.check(s)) earned.add(b.id);
+  });
+  if (earned.size > before.size) {
+    state.badges = Array.from(earned);
+    saveState();
+    // mostra notificação dos novos
+    Array.from(earned).filter(id => !before.has(id)).forEach((id, i) => {
+      setTimeout(() => notifyBadgeEarned(id), 600 + i * 1200);
+    });
+  } else {
+    state.badges = Array.from(earned);
+    saveState();
+  }
+}
+
+function notifyBadgeEarned(id) {
+  const def = BADGES_DEF.find(b => b.id === id);
+  if (!def) return;
+  const layer = document.getElementById('fxLayer');
+  if (!layer) return;
+  const toast = document.createElement('div');
+  toast.className = 'badge-toast';
+  toast.innerHTML = `<span class="bt-icon">${def.icon}</span><div class="bt-text"><div class="bt-name">${def.name}</div><div class="bt-desc">${def.desc}</div></div>`;
+  layer.appendChild(toast);
+  setTimeout(() => toast.remove(), 3200);
+}
+
+function renderPlayer() {
+  const s = playerState();
+  const xpInfo = xpForNextLevel(s.xp);
+  document.getElementById('playerLevel').textContent = s.level;
+  document.getElementById('playerTitle').textContent = s.title;
+  document.getElementById('playerXpText').textContent = s.xp + ' XP' + (xpInfo.done ? ' • MAX' : ` • ${xpInfo.current}/${xpInfo.needed}`);
+  const fill = document.getElementById('playerXpFill');
+  fill.style.width = (xpInfo.pct * 100) + '%';
+  document.getElementById('playerStreak').innerHTML = `<span class="flame">🔥</span> ${s.streak} dia${s.streak === 1 ? '' : 's'}`;
+  const todayXp = (state.xpToday && state.xpToday.date === todayKey()) ? state.xpToday.amount : 0;
+  document.getElementById('playerToday').textContent = `+${todayXp} hoje`;
+  document.getElementById('badgesCount').textContent = (state.badges || []).length;
+  // muda cor do avatar pelo nível
+  const av = document.getElementById('playerAvatar');
+  if (av) av.dataset.level = s.level;
+}
+
+function openBadgesModal() {
+  const modal = document.getElementById('badgesModal');
+  const list = document.getElementById('badgesList');
+  list.innerHTML = '';
+  const earned = new Set(state.badges || []);
+  list.classList.remove('list-anim');
+  void list.offsetWidth;
+  list.classList.add('list-anim');
+  BADGES_DEF.forEach(b => {
+    const li = document.createElement('li');
+    li.className = 'badge-row' + (earned.has(b.id) ? ' earned' : '');
+    li.innerHTML = `
+      <span class="badge-icon">${earned.has(b.id) ? b.icon : '🔒'}</span>
+      <div class="badge-info">
+        <div class="badge-name">${b.name}</div>
+        <div class="badge-desc">${b.desc}</div>
+      </div>
+    `;
+    list.appendChild(li);
+  });
+  modal.classList.remove('hidden');
+}
+function closeBadgesModal() { document.getElementById('badgesModal').classList.add('hidden'); }
 
 // ===== Render: relógio do dia =====
 const DAY_START_MIN = 6 * 60;   // 06:00
@@ -157,6 +445,7 @@ function toggleTaskDone(taskId) {
   const k = todayK + '::' + taskId;
   const t = state.tasks.find(x => x.id === taskId);
   if (!t) return;
+  const btn = document.activeElement && document.activeElement.classList.contains('ct-done-btn') ? document.activeElement : null;
   if (state.taskDone[k]) {
     delete state.taskDone[k];
   } else {
@@ -164,6 +453,7 @@ function toggleTaskDone(taskId) {
     // loga minutos cumpridos: conta como a duração total da tarefa
     state.pomodoroLog = state.pomodoroLog || [];
     state.pomodoroLog.push({ dateKey: todayK, kind: 'task', taskId, minutes: t.durationMin, createdAt: Date.now() });
+    addXp(XP_REWARDS.task, 'tarefa', btn);
   }
   saveState();
   renderAgenda();
@@ -306,6 +596,7 @@ function tickPomodoro() {
           minutes: Math.floor(state.pomodoro.totalSec / 60),
           createdAt: Date.now()
         });
+        addXp(XP_REWARDS.pomodoro, 'pomodoro', document.getElementById('pomodoroTime'));
       }
       window.FocoAlarm?.fireAlarm(
         isFocus ? 'Pomodoro concluido' : 'Pausa encerrada',
@@ -347,11 +638,13 @@ function renderRoutines() {
         <button class="ri-remove" aria-label="Remover">×</button>
       `;
       li.querySelector('.ri-text').textContent = item.text;
-      li.querySelector('.ri-check').addEventListener('click', () => {
+      li.querySelector('.ri-check').addEventListener('click', (ev) => {
         const k = key + '::' + item.id;
+        const becameDone = !state.routineDone[k];
         if (state.routineDone[k]) delete state.routineDone[k];
         else state.routineDone[k] = true;
         saveState();
+        if (becameDone) addXp(XP_REWARDS.routine, 'rotina', ev.currentTarget);
         renderRoutines();
       });
       li.querySelector('.ri-remove').addEventListener('click', () => {
@@ -401,6 +694,7 @@ function saveCapture(e) {
   state.inbox.unshift({ id: uid(), text, createdAt: Date.now() });
   document.getElementById('captureText').value = '';
   saveState();
+  addXp(XP_REWARDS.capture, 'captura', document.querySelector('#captureForm button[type="submit"]'));
   renderInbox();
   closeCapture();
 }
@@ -660,6 +954,7 @@ function renderAll() {
   renderReminders();
   updatePomodoroLabel();
   renderPomodoro();
+  renderPlayer();
 }
 
 // ===== IA - monta contexto e chama o endpoint =====
@@ -797,6 +1092,7 @@ async function callIa(action, extra) {
         tipo: action,
         createdAt: Date.now()
       });
+      if (action === 'reflect') addXp(XP_REWARDS.reflect, 'reflexão', document.querySelector('.ia-btn[data-action="reflect"]'));
     }
     saveState();
     renderIaHistory();
@@ -1085,6 +1381,10 @@ function bindEvents() {
 
   document.getElementById('clearHistoryBtn')?.addEventListener('click', clearIaHistory);
 
+  // Badges (gamificação)
+  document.getElementById('badgesBtn')?.addEventListener('click', openBadgesModal);
+  document.getElementById('badgesModalClose')?.addEventListener('click', closeBadgesModal);
+
   // IA
   document.querySelectorAll('.ia-btn').forEach(b => {
     b.addEventListener('click', () => {
@@ -1161,7 +1461,9 @@ async function handleNotifButton() {
 
 function init() {
   bindEvents();
+  registerPresence();
   renderAll();
+  renderPlayer();
   tickClock();
   updateNotifButton();
   window.FocoAlarm?.cleanOldAlerts();

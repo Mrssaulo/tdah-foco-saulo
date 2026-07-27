@@ -23,6 +23,31 @@
   </header>
 
   <main class="app">
+    <!-- Gamificação: nível + XP + streak + badges -->
+    <section id="playerCard" class="card player-card" aria-label="Progresso">
+      <div class="player-row">
+        <div class="player-avatar" id="playerAvatar">
+          <span class="pa-level" id="playerLevel">1</span>
+          <div class="pa-glow"></div>
+        </div>
+        <div class="player-info">
+          <div class="player-line1">
+            <span class="player-name" id="playerTitle">Iniciante</span>
+            <span class="player-xp" id="playerXpText">0 XP</span>
+          </div>
+          <div class="xp-bar"><span id="playerXpFill"></span></div>
+          <div class="player-line2">
+            <span class="player-streak" id="playerStreak" title="Dias seguidos usando o app"><span class="flame">🔥</span> 0 dias</span>
+            <span class="player-today" id="playerToday">+0 hoje</span>
+          </div>
+        </div>
+        <button id="badgesBtn" class="badges-btn" aria-label="Ver conquistas">
+          <span class="bb-icon">🏆</span>
+          <span class="bb-count" id="badgesCount">0</span>
+        </button>
+      </div>
+    </section>
+
     <!-- Relógio do dia + tarefa atual -->
     <section class="card time-card" aria-label="Relógio do dia">
       <div class="day-ring-wrap">
@@ -251,6 +276,20 @@
       </div>
     </div>
   </div>
+
+  <!-- Modal de badges -->
+  <div id="badgesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="badgesTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="badgesTitle">Conquistas</h2>
+        <button id="badgesModalClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <ul id="badgesList" class="badges-list"></ul>
+    </div>
+  </div>
+
+  <!-- Container de partículas +XP e confete -->
+  <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
 
   <!-- Modal de captura -->
   <div id="captureModal" class="modal hidden" role="dialog" aria-modal="true">
