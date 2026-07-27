@@ -106,6 +106,17 @@ function renderAgenda() {
     cur.classList.remove('empty');
     const doneKey = todayK + '::' + current.id;
     const isDone = !!state.taskDone[doneKey];
+    // aplica animacao de swap quando a tarefa atual muda (id diferente do ultimo render)
+    const lastCurrentId = cur.dataset.currentId;
+    if (lastCurrentId && lastCurrentId !== current.id) {
+      cur.classList.remove('swap');
+      // forca reflow para reiniciar a animacao
+      void cur.offsetWidth;
+      cur.classList.add('swap');
+    } else if (!lastCurrentId) {
+      cur.classList.add('swap');
+    }
+    cur.dataset.currentId = current.id;
     cur.innerHTML = `
       <div class="ct-info">
         <div class="ct-title"></div>
@@ -125,6 +136,9 @@ function renderAgenda() {
   }
   const nextEl = document.getElementById('nextTasks');
   nextEl.innerHTML = '';
+  nextEl.classList.remove('list-anim');
+  void nextEl.offsetWidth;
+  nextEl.classList.add('list-anim');
   next.forEach(t => {
     const li = document.createElement('li');
     li.innerHTML = `
@@ -318,6 +332,9 @@ function renderRoutines() {
   ['morning', 'afternoon', 'evening'].forEach(period => {
     const ul = document.getElementById('routine' + capitalize(period));
     ul.innerHTML = '';
+    ul.classList.remove('list-anim');
+    void ul.offsetWidth;
+    ul.classList.add('list-anim');
     const items = state.routines[period] || [];
     const key = todayKey() + '::' + period;
     items.forEach(item => {
@@ -391,6 +408,9 @@ function renderInbox() {
   document.getElementById('inboxCount').textContent = state.inbox.length;
   const ul = document.getElementById('inboxList');
   ul.innerHTML = '';
+  ul.classList.remove('list-anim');
+  void ul.offsetWidth;
+  ul.classList.add('list-anim');
   if (state.inbox.length === 0) {
     const li = document.createElement('li');
     li.style.justifyContent = 'center';
@@ -441,6 +461,13 @@ function setTab(name) {
     document.querySelector('.time-card').classList.toggle('hidden', name !== 'agenda');
     document.querySelector('.agenda-card').classList.toggle('hidden', name !== 'agenda');
     document.querySelector('.actions-card').classList.toggle('hidden', name !== 'agenda');
+  }
+  // slide-in do painel ativo
+  const activePanel = (name === 'agenda') ? document.querySelector('.agenda-card') : document.getElementById(name + 'Panel');
+  if (activePanel) {
+    activePanel.classList.remove('tab-enter');
+    void activePanel.offsetWidth;
+    activePanel.classList.add('tab-enter');
   }
   if (name === 'stats') renderStats();
   if (name === 'ia') renderIaHistory();
@@ -493,6 +520,9 @@ function dayMonthLabel(dateKey) {
 function renderReminders() {
   const ul = document.getElementById('remindersList');
   ul.innerHTML = '';
+  ul.classList.remove('list-anim');
+  void ul.offsetWidth;
+  ul.classList.add('list-anim');
   document.getElementById('remindersCount').textContent = state.reminders.length;
   if (state.reminders.length === 0) {
     const li = document.createElement('li');
@@ -744,6 +774,9 @@ async function callIa(action, extra) {
     const reply = data.reply || '(sem resposta)';
     replyEl.classList.remove('loading');
     replyEl.textContent = reply;
+    replyEl.classList.remove('appear');
+    void replyEl.offsetWidth;
+    replyEl.classList.add('appear');
     statusEl.textContent = 'pronto';
 
     // grava histórico
@@ -785,6 +818,9 @@ function renderIaHistory() {
 
   // histórico
   listEl.innerHTML = '';
+  listEl.classList.remove('list-anim');
+  void listEl.offsetWidth;
+  listEl.classList.add('list-anim');
   const hist = (state.iaHistory || []).slice().reverse();
   if (hist.length === 0) {
     emptyEl?.classList.remove('hidden');
@@ -798,7 +834,7 @@ function renderIaHistory() {
       const actLabel = labelMap[s.action] || s.action;
       li.innerHTML = `
         <div class="ia-h-head">
-          <span class="ia-h-tag">${actLabel}</span>
+          <span class="ia-h-tag ${s.action}">${actLabel}</span>
           <span class="ia-h-when">${when}</span>
         </div>
         ${s.prompt ? `<div class="ia-h-prompt"></div>` : ''}
@@ -812,6 +848,9 @@ function renderIaHistory() {
 
   // memória entre dias
   memEl.innerHTML = '';
+  memEl.classList.remove('list-anim');
+  void memEl.offsetWidth;
+  memEl.classList.add('list-anim');
   const mem = (state.iaMemory || []).slice().reverse().slice(0, IA_MEMORY_MAX);
   if (mem.length === 0) {
     memEmpty?.classList.remove('hidden');
@@ -951,8 +990,9 @@ function renderStats() {
     const isToday = d.key === todayK;
     const label = shortDayLabel(d.date);
     const pctLabel = d.planned > 0 ? Math.round(d.pct * 100) + '%' : (d.totalCumprido > 0 ? '+' + d.totalCumprido + 'min' : '—');
+    const tooltip = `${label} ${d.key} • planejado ${d.planned}min • cumprido ${d.totalCumprido}min${d.focus ? ' (foco ' + d.focus + 'min)' : ''}`;
     return `
-      <div class="stat-day${isToday ? ' today' : ''}">
+      <div class="stat-day${isToday ? ' today' : ''}" title="${tooltip}">
         <div class="stat-day-bar" style="background:${colorForPct(d.pct)}"></div>
         <div class="stat-day-label">${label}</div>
         <div class="stat-day-pct">${pctLabel}</div>
