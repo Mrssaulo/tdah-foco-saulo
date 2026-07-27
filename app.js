@@ -411,13 +411,18 @@ function renderAgenda() {
         <div class="ct-meta"></div>
         <div class="ct-bar"><span style="width:${pct * 100}%"></span></div>
       </div>
-      <button class="ct-done-btn${isDone ? ' done' : ''}" aria-label="Marcar como concluída">${isDone ? '✓' : '○'}</button>
+      <div class="ct-actions">
+        <button class="ct-done-btn${isDone ? ' done' : ''}" aria-label="Marcar como concluída">${isDone ? '✓' : '○'}</button>
+        ${isDone ? '<button class="ct-undo-btn" aria-label="Desmarcar">×</button>' : ''}
+      </div>
       <span class="nl-cat cat-${current.category}">${current.category}</span>
     `;
     cur.querySelector('.ct-title').textContent = current.title;
     const endMin = current.startMinutes + current.durationMin;
     cur.querySelector('.ct-meta').textContent = `${formatMin(current.startMinutes)} → ${formatMin(endMin)} • ${current.durationMin} min`;
     cur.querySelector('.ct-done-btn').addEventListener('click', () => toggleTaskDone(current.id));
+    const undoBtn = cur.querySelector('.ct-undo-btn');
+    if (undoBtn) undoBtn.addEventListener('click', (ev) => { ev.stopPropagation(); toggleTaskDone(current.id); });
   } else {
     cur.classList.add('empty');
     cur.innerHTML = '<div class="empty-state">Nada por agora. Toque em <strong>+ Tarefa</strong>.</div>';
@@ -446,14 +451,24 @@ function toggleTaskDone(taskId) {
   const t = state.tasks.find(x => x.id === taskId);
   if (!t) return;
   const btn = document.activeElement && document.activeElement.classList.contains('ct-done-btn') ? document.activeElement : null;
-  if (state.taskDone[k]) {
+  // XP só na primeira conclusão da tarefa por dia (não acumula ao re-marcar)
+  state.taskDoneXpAwarded = state.taskDoneXpAwarded || {};
+  const wasDone = !!state.taskDone[k];
+  if (wasDone) {
     delete state.taskDone[k];
+    // não reverte XP (já foi gasto/registrado), só remove o done
   } else {
     state.taskDone[k] = true;
-    // loga minutos cumpridos: conta como a duração total da tarefa
+    // loga minutos cumpridos (uma vez por dia por tarefa)
     state.pomodoroLog = state.pomodoroLog || [];
-    state.pomodoroLog.push({ dateKey: todayK, kind: 'task', taskId, minutes: t.durationMin, createdAt: Date.now() });
-    addXp(XP_REWARDS.task, 'tarefa', btn);
+    const alreadyLogged = state.pomodoroLog.some(p => p.dateKey === todayK && p.kind === 'task' && p.taskId === taskId);
+    if (!alreadyLogged) {
+      state.pomodoroLog.push({ dateKey: todayK, kind: 'task', taskId, minutes: t.durationMin, createdAt: Date.now() });
+    }
+    if (!state.taskDoneXpAwarded[k]) {
+      state.taskDoneXpAwarded[k] = true;
+      addXp(XP_REWARDS.task, 'tarefa', btn);
+    }
   }
   saveState();
   renderAgenda();
