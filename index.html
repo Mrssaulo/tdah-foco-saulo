@@ -137,7 +137,27 @@
         </div>
       </form>
       <div id="iaReply" class="ia-reply hidden"></div>
+
+      <div class="ia-history-block">
+        <header class="ia-history-head">
+          <h3>Histórico recente</h3>
+          <button id="clearHistoryBtn" class="btn-ghost btn-mini">Limpar</button>
+        </header>
+        <ul id="iaHistoryList" class="ia-history-list"></ul>
+        <div id="iaHistoryEmpty" class="ia-empty hidden">Nenhuma conversa registrada ainda.</div>
+      </div>
+
+      <div class="ia-memory-block">
+        <header class="ia-history-head">
+          <h3>Memória entre dias</h3>
+        </header>
+        <ul id="iaMemoryList" class="ia-memory-list"></ul>
+        <div id="iaMemoryEmpty" class="ia-empty hidden">A IA ainda não tem memória. Faça uma reflexão ou pergunte algo e ela vai lembrar nas próximas conversas.</div>
+      </div>
     </section>
+
+    <!-- Estatísticas da semana -->
+    <section id="statsPanel" class="card stats-card hidden" aria-label="Estatísticas da semana"></section>
   </main>
 
   <!-- Modal de lembrete -->
@@ -256,6 +276,7 @@
     <button class="tab" data-tab="routines">Rotinas</button>
     <button class="tab" data-tab="inbox">Caixa</button>
     <button class="tab" data-tab="reminders">Datas</button>
+    <button class="tab" data-tab="stats">Semana</button>
     <button class="tab" data-tab="ia">IA</button>
   </nav>
 

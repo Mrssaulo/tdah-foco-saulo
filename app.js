@@ -15,7 +15,17 @@ const defaultState = {
   reminders: [],      // { id, title, dateKey, note, source, createdAt }
   pomodoro: { mode: 'focus', totalSec: 25 * 60, remainingSec: 25 * 60, running: false, taskId: null },
   lastResetDate: null,
+  // taskDone: { 'YYYY-MM-DD::taskId': true } — concluídas hoje
+  taskDone: {},
+  // IA: histórico de conversas (últimas N sessões) + memória curta entre dias
+  iaHistory: [],      // [{ id, startedAt, action, prompt, reply }]
+  iaMemory: [],       // [{ dateKey, summary, tipo, createdAt }]
 };
+
+// Limites
+const IA_HISTORY_MAX = 30;       // sessões guardadas no app
+const IA_HISTORY_CONTEXT = 5;    // últimas enviadas à IA
+const IA_MEMORY_MAX = 7;         // dias de memória curta
 
 let state = loadState();
 let timerInterval = null;
@@ -89,21 +99,26 @@ function renderAgenda() {
   const current = list.find(t => now >= t.startMinutes && now < t.startMinutes + t.durationMin);
   const next = list.filter(t => t.startMinutes > now).slice(0, 5);
   const cur = document.getElementById('currentTask');
+  const todayK = todayKey();
   if (current) {
     const elapsed = now - current.startMinutes;
     const pct = clamp(elapsed / current.durationMin, 0, 1);
     cur.classList.remove('empty');
+    const doneKey = todayK + '::' + current.id;
+    const isDone = !!state.taskDone[doneKey];
     cur.innerHTML = `
       <div class="ct-info">
         <div class="ct-title"></div>
         <div class="ct-meta"></div>
         <div class="ct-bar"><span style="width:${pct * 100}%"></span></div>
       </div>
+      <button class="ct-done-btn${isDone ? ' done' : ''}" aria-label="Marcar como concluída">${isDone ? '✓' : '○'}</button>
       <span class="nl-cat cat-${current.category}">${current.category}</span>
     `;
     cur.querySelector('.ct-title').textContent = current.title;
     const endMin = current.startMinutes + current.durationMin;
     cur.querySelector('.ct-meta').textContent = `${formatMin(current.startMinutes)} → ${formatMin(endMin)} • ${current.durationMin} min`;
+    cur.querySelector('.ct-done-btn').addEventListener('click', () => toggleTaskDone(current.id));
   } else {
     cur.classList.add('empty');
     cur.innerHTML = '<div class="empty-state">Nada por agora. Toque em <strong>+ Tarefa</strong>.</div>';
@@ -121,6 +136,23 @@ function renderAgenda() {
     li.addEventListener('click', () => openTaskModal(t.id));
     nextEl.appendChild(li);
   });
+}
+
+function toggleTaskDone(taskId) {
+  const todayK = todayKey();
+  const k = todayK + '::' + taskId;
+  const t = state.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (state.taskDone[k]) {
+    delete state.taskDone[k];
+  } else {
+    state.taskDone[k] = true;
+    // loga minutos cumpridos: conta como a duração total da tarefa
+    state.pomodoroLog = state.pomodoroLog || [];
+    state.pomodoroLog.push({ dateKey: todayK, kind: 'task', taskId, minutes: t.durationMin, createdAt: Date.now() });
+  }
+  saveState();
+  renderAgenda();
 }
 
 // ===== Modal de tarefa =====
@@ -251,6 +283,16 @@ function tickPomodoro() {
       clearInterval(timerInterval);
       timerInterval = null;
       const isFocus = state.pomodoro.mode === 'focus';
+      // loga só sessões de foco (não pausas) para estatísticas
+      if (isFocus) {
+        state.pomodoroLog = state.pomodoroLog || [];
+        state.pomodoroLog.push({
+          dateKey: todayKey(),
+          kind: 'pomodoro',
+          minutes: Math.floor(state.pomodoro.totalSec / 60),
+          createdAt: Date.now()
+        });
+      }
       window.FocoAlarm?.fireAlarm(
         isFocus ? 'Pomodoro concluido' : 'Pausa encerrada',
         isFocus ? 'Hora da pausa. Levanta, bebe agua, respira.' : 'Hora de voltar ao foco. Toca o timer.',
@@ -392,6 +434,7 @@ function setTab(name) {
   document.getElementById('inboxPanel').classList.toggle('hidden', name !== 'inbox');
   document.getElementById('remindersPanel').classList.toggle('hidden', name !== 'reminders');
   document.getElementById('iaPanel').classList.toggle('hidden', name !== 'ia');
+  document.getElementById('statsPanel')?.classList.toggle('hidden', name !== 'stats');
   // Em telas pequenas, esconde o relógio + agenda quando outras tabs estão ativas
   const small = window.innerWidth < 720;
   if (small) {
@@ -399,6 +442,8 @@ function setTab(name) {
     document.querySelector('.agenda-card').classList.toggle('hidden', name !== 'agenda');
     document.querySelector('.actions-card').classList.toggle('hidden', name !== 'agenda');
   }
+  if (name === 'stats') renderStats();
+  if (name === 'ia') renderIaHistory();
 }
 
 // ===== Reset diário das rotinas =====
@@ -407,6 +452,7 @@ function checkDailyReset() {
   if (state.lastResetDate !== today) {
     // limpa conclusões antigas
     Object.keys(state.routineDone).forEach(k => { if (!k.startsWith(today)) delete state.routineDone[k]; });
+    Object.keys(state.taskDone).forEach(k => { if (!k.startsWith(today)) delete state.taskDone[k]; });
     state.lastResetDate = today;
     saveState();
   }
@@ -627,7 +673,16 @@ function buildIaContext() {
     daysLeft: daysUntilDate(r.dateKey),
     note: r.note || ''
   })).filter(r => r.daysLeft >= -1 && r.daysLeft <= 14);
-  return { tasks, inbox, routinesPending, pomodoro, remindersUpcoming };
+  // histórico recente (memória curta entre dias)
+  const recentHistory = (state.iaHistory || []).slice(-IA_HISTORY_CONTEXT).map(s => ({
+    when: new Date(s.startedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+    action: s.action,
+    user: s.prompt,
+    ia: s.reply
+  }));
+  // memória curta entre dias
+  const memory = (state.iaMemory || []).slice(-IA_MEMORY_MAX);
+  return { tasks, inbox, routinesPending, pomodoro, remindersUpcoming, recentHistory, memory };
 }
 
 function daysUntilDate(dateKey) {
@@ -637,6 +692,37 @@ function daysUntilDate(dateKey) {
   return Math.round((target - today) / (1000 * 60 * 60 * 24));
 }
 
+// Resumo curto da sessão pra guardar na memória entre dias
+function summarizeIaSession(action, prompt, reply) {
+  // Corta o reply em até ~140 chars e prefixa com ação
+  const shortReply = String(reply || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const labels = {
+    now: 'o que fazer agora',
+    break: 'quebra de tarefa',
+    triage: 'triagem da caixa',
+    reflect: 'reflexão do dia',
+    free: 'pedido livre'
+  };
+  const label = labels[action] || action || 'conversa';
+  return `[${label}] ${shortReply}${shortReply.length === 140 ? '…' : ''}`;
+}
+
+function pushIaHistory(session) {
+  state.iaHistory = state.iaHistory || [];
+  state.iaHistory.push(session);
+  if (state.iaHistory.length > IA_HISTORY_MAX) {
+    state.iaHistory = state.iaHistory.slice(-IA_HISTORY_MAX);
+  }
+}
+
+function pushIaMemory(entry) {
+  state.iaMemory = state.iaMemory || [];
+  state.iaMemory.push(entry);
+  if (state.iaMemory.length > IA_MEMORY_MAX * 2) {
+    state.iaMemory = state.iaMemory.slice(-IA_MEMORY_MAX * 2);
+  }
+}
+
 async function callIa(action, extra) {
   const statusEl = document.getElementById('iaStatus');
   const replyEl = document.getElementById('iaReply');
@@ -644,6 +730,9 @@ async function callIa(action, extra) {
   replyEl.classList.remove('hidden', 'error');
   replyEl.classList.add('loading');
   replyEl.textContent = 'Aguarde, pensando...';
+  const sessionId = uid();
+  const startedAt = Date.now();
+  const promptText = (extra && (extra.prompt || extra.relato || extra.target)) || '';
   try {
     const r = await fetch('/api/ia', {
       method: 'POST',
@@ -652,15 +741,276 @@ async function callIa(action, extra) {
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Erro ' + r.status);
+    const reply = data.reply || '(sem resposta)';
     replyEl.classList.remove('loading');
-    replyEl.textContent = data.reply || '(sem resposta)';
+    replyEl.textContent = reply;
     statusEl.textContent = 'pronto';
+
+    // grava histórico
+    pushIaHistory({
+      id: sessionId,
+      startedAt,
+      endedAt: Date.now(),
+      action,
+      prompt: promptText,
+      reply
+    });
+
+    // grava memória curta (só reflexões e pedidos livres com conteúdo útil)
+    if (action === 'reflect' || (action === 'free' && promptText.length > 20)) {
+      pushIaMemory({
+        dateKey: todayKey(),
+        summary: summarizeIaSession(action, promptText, reply),
+        tipo: action,
+        createdAt: Date.now()
+      });
+    }
+    saveState();
+    renderIaHistory();
   } catch (e) {
     replyEl.classList.remove('loading');
     replyEl.classList.add('error');
     replyEl.textContent = 'Erro: ' + (e.message || e) + '\n\nDica: a IA só funciona depois que o app estiver publicado (HTTPS) com a chave configurada no servidor.';
     statusEl.textContent = 'erro';
   }
+}
+
+// Render: histórico + memória visíveis na aba IA
+function renderIaHistory() {
+  const listEl = document.getElementById('iaHistoryList');
+  const emptyEl = document.getElementById('iaHistoryEmpty');
+  const memEl = document.getElementById('iaMemoryList');
+  const memEmpty = document.getElementById('iaMemoryEmpty');
+  if (!listEl) return;
+
+  // histórico
+  listEl.innerHTML = '';
+  const hist = (state.iaHistory || []).slice().reverse();
+  if (hist.length === 0) {
+    emptyEl?.classList.remove('hidden');
+  } else {
+    emptyEl?.classList.add('hidden');
+    hist.forEach(s => {
+      const li = document.createElement('li');
+      li.className = 'ia-h-item';
+      const when = new Date(s.startedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const labelMap = { now: 'agora', break: 'quebrar', triage: 'triar', reflect: 'reflexão', free: 'livre' };
+      const actLabel = labelMap[s.action] || s.action;
+      li.innerHTML = `
+        <div class="ia-h-head">
+          <span class="ia-h-tag">${actLabel}</span>
+          <span class="ia-h-when">${when}</span>
+        </div>
+        ${s.prompt ? `<div class="ia-h-prompt"></div>` : ''}
+        <div class="ia-h-reply"></div>
+      `;
+      if (s.prompt) li.querySelector('.ia-h-prompt').textContent = 'Você: ' + s.prompt;
+      li.querySelector('.ia-h-reply').textContent = 'IA: ' + s.reply;
+      listEl.appendChild(li);
+    });
+  }
+
+  // memória entre dias
+  memEl.innerHTML = '';
+  const mem = (state.iaMemory || []).slice().reverse().slice(0, IA_MEMORY_MAX);
+  if (mem.length === 0) {
+    memEmpty?.classList.remove('hidden');
+  } else {
+    memEmpty?.classList.add('hidden');
+    mem.forEach(m => {
+      const li = document.createElement('li');
+      li.className = 'ia-m-item';
+      const when = m.dateKey || '';
+      li.innerHTML = `<span class="ia-m-when">${when}</span><span class="ia-m-text"></span>`;
+      li.querySelector('.ia-m-text').textContent = m.summary;
+      memEl.appendChild(li);
+    });
+  }
+}
+
+function clearIaHistory() {
+  if (!confirm('Apagar todo o histórico de conversas com a IA?')) return;
+  state.iaHistory = [];
+  saveState();
+  renderIaHistory();
+}
+
+// ===== Estatísticas da semana =====
+function getLast7Days() {
+  const days = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const k = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    days.push({ key: k, date: new Date(d) });
+  }
+  return days;
+}
+
+function shortDayLabel(d) {
+  const wd = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+  return wd[d.getDay()];
+}
+
+function computeWeekStats() {
+  const days = getLast7Days();
+  const dayKeys = new Set(days.map(d => d.key));
+
+  // Planejado: soma das durações de tarefas nos últimos 7 dias
+  const plannedByDay = {};
+  days.forEach(d => plannedByDay[d.key] = 0);
+  (state.tasks || []).forEach(t => {
+    if (dayKeys.has(t.dateKey)) {
+      plannedByDay[t.dateKey] = (plannedByDay[t.dateKey] || 0) + (t.durationMin || 0);
+    }
+  });
+
+  // Cumprido via taskDone
+  const doneByDay = {};
+  days.forEach(d => doneByDay[d.key] = 0);
+  Object.keys(state.taskDone || {}).forEach(k => {
+    const dateKey = k.split('::')[0];
+    if (dayKeys.has(dateKey)) {
+      const taskId = k.split('::')[1];
+      const t = (state.tasks || []).find(x => x.id === taskId);
+      if (t) doneByDay[dateKey] = (doneByDay[dateKey] || 0) + (t.durationMin || 0);
+    }
+  });
+
+  // Cumprido via pomodoros (apenas os que ainda não viraram taskDone)
+  const focusByDay = {};
+  days.forEach(d => focusByDay[d.key] = 0);
+  (state.pomodoroLog || []).forEach(p => {
+    if (dayKeys.has(p.dateKey)) {
+      focusByDay[p.dateKey] = (focusByDay[p.dateKey] || 0) + (p.minutes || 0);
+    }
+  });
+
+  // Rotinas cumpridas vs total
+  const routinesByDay = days.map(d => {
+    let total = 0, done = 0;
+    ['morning', 'afternoon', 'evening'].forEach(period => {
+      const items = state.routines[period] || [];
+      items.forEach(item => {
+        total++;
+        if (state.routineDone[d.key + '::' + period + '::' + item.id]) done++;
+      });
+    });
+    return { dateKey: d.key, total, done };
+  });
+
+  // Tarefas por categoria (últimos 7 dias)
+  const byCategory = {};
+  (state.tasks || []).forEach(t => {
+    if (dayKeys.has(t.dateKey)) {
+      byCategory[t.category] = (byCategory[t.category] || 0) + 1;
+    }
+  });
+
+  // % por dia (cap em 100%) — usa planejado como denominador quando houver
+  const perDay = days.map(d => {
+    const planned = plannedByDay[d.key] || 0;
+    const done = doneByDay[d.key] || 0;
+    const focus = focusByDay[d.key] || 0;
+    const totalCumprido = done + focus; // soma o que veio de check + pomodoros (não cumulativo entre si)
+    const pct = planned > 0 ? clamp(totalCumprido / planned, 0, 1.2) : (totalCumprido > 0 ? 1 : 0);
+    return { ...d, planned, done, focus, totalCumprido, pct };
+  });
+
+  // Totais da semana
+  const totalPlanned = perDay.reduce((a, b) => a + b.planned, 0);
+  const totalDone = perDay.reduce((a, b) => a + b.done, 0);
+  const totalFocus = perDay.reduce((a, b) => a + b.focus, 0);
+  const totalCumprido = totalDone + totalFocus;
+  const weekPct = totalPlanned > 0 ? clamp(totalCumprido / totalPlanned, 0, 1.2) : 0;
+  const routinesDone = routinesByDay.reduce((a, b) => a + b.done, 0);
+  const routinesTotal = routinesByDay.reduce((a, b) => a + b.total, 0);
+
+  return { perDay, totalPlanned, totalDone, totalFocus, totalCumprido, weekPct, routinesDone, routinesTotal, byCategory };
+}
+
+function colorForPct(p) {
+  // 0 = verde claro (vazio/baixo), 0.5 = azul, 0.8+ = amarelo, >1 = vermelho (sobrecarregado)
+  if (p === 0) return 'rgba(255,255,255,0.05)';
+  if (p < 0.3) return '#4ade80';
+  if (p < 0.7) return '#6c8cff';
+  if (p < 1) return '#fbbf24';
+  return '#f87171';
+}
+
+function renderStats() {
+  const panel = document.getElementById('statsPanel');
+  if (!panel) return;
+  const s = computeWeekStats();
+  const todayK = todayKey();
+
+  // Heatmap: 7 dias
+  const heatmapHtml = s.perDay.map(d => {
+    const isToday = d.key === todayK;
+    const label = shortDayLabel(d.date);
+    const pctLabel = d.planned > 0 ? Math.round(d.pct * 100) + '%' : (d.totalCumprido > 0 ? '+' + d.totalCumprido + 'min' : '—');
+    return `
+      <div class="stat-day${isToday ? ' today' : ''}">
+        <div class="stat-day-bar" style="background:${colorForPct(d.pct)}"></div>
+        <div class="stat-day-label">${label}</div>
+        <div class="stat-day-pct">${pctLabel}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Categorias (top 5)
+  const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const totalCats = cats.reduce((a, b) => a + b[1], 0) || 1;
+  const catsHtml = cats.length === 0
+    ? '<div class="stat-empty">Sem tarefas nos últimos 7 dias.</div>'
+    : cats.map(([cat, n]) => `
+        <div class="stat-cat-row">
+          <span class="nl-cat cat-${cat}">${cat}</span>
+          <div class="stat-cat-bar"><span style="width:${(n / totalCats) * 100}%"></span></div>
+          <span class="stat-cat-count">${n}</span>
+        </div>
+      `).join('');
+
+  // Rotinas: total X cumpridas
+  const routinesPct = s.routinesTotal > 0 ? Math.round((s.routinesDone / s.routinesTotal) * 100) : 0;
+
+  panel.innerHTML = `
+    <header class="card-head">
+      <h2>Últimos 7 dias</h2>
+      <span class="badge">${s.totalDone + s.totalFocus}min cumpridos</span>
+    </header>
+
+    <div class="stat-heatmap">${heatmapHtml}</div>
+
+    <div class="stat-kpis">
+      <div class="stat-kpi">
+        <div class="stat-kpi-num">${Math.round(s.weekPct * 100)}%</div>
+        <div class="stat-kpi-label">do planejado</div>
+      </div>
+      <div class="stat-kpi">
+        <div class="stat-kpi-num">${s.routinesDone}/${s.routinesTotal}</div>
+        <div class="stat-kpi-label">rotinas (${routinesPct}%)</div>
+      </div>
+      <div class="stat-kpi">
+        <div class="stat-kpi-num">${s.totalDone + s.totalFocus}min</div>
+        <div class="stat-kpi-label">de foco</div>
+      </div>
+    </div>
+
+    <div class="stat-section">
+      <h3 class="stat-section-title">Por categoria</h3>
+      ${catsHtml}
+    </div>
+
+    <div class="stat-legend">
+      <span class="stat-legend-item"><span class="stat-legend-dot" style="background:${colorForPct(0.1)}"></span> leve</span>
+      <span class="stat-legend-item"><span class="stat-legend-dot" style="background:${colorForPct(0.5)}"></span> médio</span>
+      <span class="stat-legend-item"><span class="stat-legend-dot" style="background:${colorForPct(0.85)}"></span> alto</span>
+      <span class="stat-legend-item"><span class="stat-legend-dot" style="background:${colorForPct(1.1)}"></span> sobrecarregado</span>
+    </div>
+  `;
 }
 
 // ===== Bind eventos =====
@@ -692,6 +1042,8 @@ function bindEvents() {
   document.getElementById('reminderDelete').addEventListener('click', deleteReminderFromForm);
 
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+
+  document.getElementById('clearHistoryBtn')?.addEventListener('click', clearIaHistory);
 
   // IA
   document.querySelectorAll('.ia-btn').forEach(b => {

@@ -27,7 +27,14 @@ O QUE VOCÊ PODE FAZER (4 capacidades)
 SAÍDA
 - Listas com "-" quando tiver mais de 2 itens.
 - Termine quase sempre com pergunta ou ação concreta ("E agora?", "Toca o timer?", "Quer que eu quebre essa?").
-- Se faltar informação, peça em UMA frase. Nunca invente contexto que não recebeu.`;
+- Se faltar informação, peça em UMA frase. Nunca invente contexto que não recebeu.
+
+MEMÓRIA ENTRE DIAS
+- Você recebe um bloco "MEMÓRIA ENTRE DIAS" com resumos curtos das últimas conversas e reflexões do Saulo.
+- Use essa memória naturalmente: referencie reflexões anteriores quando fizer sentido, reconheça padrões ("ontem você disse que...", "nas últimas reflexões apareceu...").
+- Nunca cite textualmente os resumos (eles são privados). Use como pano de fundo.
+- Se a memória tiver algo relevante pro pedido atual (ex: ele travou em algo ontem e hoje pede ajuda parecida), conecte.
+- Se a memória estiver vazia ou sem relação, não mencione.`;
 
 function buildUserPrompt(action, context) {
   // Forca timezone do Brasil (Vercel roda em UTC)
@@ -41,6 +48,8 @@ function buildUserPrompt(action, context) {
   const lembretes = (c.remindersUpcoming || []).map(r => `- em ${r.daysLeft >= 0 ? r.daysLeft + 'd' : 'passou'} (${r.date}): ${r.title}${r.note ? ' — ' + r.note : ''}`).join('\n') || 'nenhum';
   const pomodoro = c.pomodoro || 'parado';
   const foco = c.foco || 'sem registro';
+  const memory = (c.memory || []).map(m => `- ${m.dateKey} (${m.tipo}): ${m.summary}`).join('\n') || 'sem memória registrada';
+  const recentHistory = (c.recentHistory || []).map(h => `- ${h.when} [${h.action}] user: ${h.user || '(sem texto)'} | ia: ${h.ia}`).join('\n') || 'sem conversas recentes';
 
   const base = `CONTEXTO AGORA
 - Data/hora: ${dateStr}, ${timeStr}
@@ -54,6 +63,12 @@ ${rotinasPendentes}
 ${lembretes}
 - Caixa de entrada:
 ${inbox}
+
+MEMÓRIA ENTRE DIAS (resumo das últimas conversas e reflexões):
+${memory}
+
+HISTÓRICO RECENTE (últimas interações — use para não repetir orientação):
+${recentHistory}
 
 `;
 

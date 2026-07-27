@@ -22,11 +22,11 @@ app-tdah-saulo/
 └── README.md
 ```
 
-## O que tem na v1.6
+## O que tem na v2.0
 
 - Relógio do dia em anel (verde→amarelo→vermelho)
-- Agenda "Agora / Próximo" com barra de progresso
-- Pomodoro 25/5/15 acoplado à tarefa
+- Agenda "Agora / Próximo" com barra de progresso + botão de concluir tarefa
+- Pomodoro 25/5/15 acoplado à tarefa, com log de sessões de foco
 - Rotinas manhã/tarde/noite com reset diário
 - Captura rápida + caixa de entrada classificável
 - **Alarmes e notificações:**
@@ -39,8 +39,16 @@ app-tdah-saulo/
   - "Quebrar tarefa"
   - "Triar caixa"
   - "Reflexão do dia"
+- **Histórico de conversas com a IA** (últimas 30, persistido local)
+- **Memória entre dias** — reflexões e pedidos livres relevantes são lembrados e enviados à IA nos próximos prompts
+- **Estatísticas da semana:**
+  - Heatmap de 7 dias (verde→amarelo→vermelho conforme cumprimento)
+  - % do planejado cumprido
+  - Rotinas completas vs total
+  - Minutos de foco (soma de pomodoros + tarefas marcadas)
+  - Tarefas por categoria
 - Backend Vercel chamando OpenRouter (`google/gemini-2.5-flash-lite`)
-- IA conhece seu contexto (Montalvex, faculdade, Pro Futebol, regras de comunicação)
+- IA conhece seu contexto (Montalvex, faculdade, Pro Futebol, regras de comunicação) e usa histórico + memória pra não repetir orientação
 
 ## Como publicar (passo a passo)
 
@@ -87,9 +95,8 @@ Abra `http://localhost:8080`. O app funciona inteiro, **menos a aba IA** (porque
 
 ## Próximos ajustes sugeridos
 
-- Histórico de conversas com a IA
-- Memória entre dias (a IA lembra do que rolou ontem)
-- Som ao fim do Pomodoro
-- Alarme antes da tarefa começar (notificação do Android)
+- Som customizado ao fim do Pomodoro (já tem alarme.wav genérico)
+- Alarme antes da tarefa começar (notificação do Android em background — exige Capacitor)
 - Modo claro
-- Estatísticas (rotinas completas na semana, % do dia cumprido)
+- Gráfico de linha mostrando tendência diária
+- Exportar/importar dados (backup em JSON)
