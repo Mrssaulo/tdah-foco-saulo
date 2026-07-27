@@ -1,5 +1,5 @@
 // Service Worker - cache offline + handlers de notificacao
-const CACHE = 'foco-tdah-v3';
+const CACHE = 'foco-tdah-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -31,8 +31,11 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        // So cachear respostas bem-sucedidas. Antes gravava ate 404 e travava o SW.
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       }).catch(() => cached);
     })
