@@ -330,6 +330,7 @@ function renderPlayer() {
   document.getElementById('playerXpText').textContent = s.xp + ' XP' + (xpInfo.done ? ' • MAX' : ` • ${xpInfo.current}/${xpInfo.needed}`);
   const fill = document.getElementById('playerXpFill');
   fill.style.width = (xpInfo.pct * 100) + '%';
+  fill.classList.toggle('has-xp', xpInfo.pct > 0.02);
   document.getElementById('playerStreak').innerHTML = `<span class="flame">🔥</span> ${s.streak} dia${s.streak === 1 ? '' : 's'}`;
   const todayXp = (state.xpToday && state.xpToday.date === todayKey()) ? state.xpToday.amount : 0;
   document.getElementById('playerToday').textContent = `+${todayXp} hoje`;
@@ -505,7 +506,7 @@ function renderAgenda() {
       <div class="ct-info">
         <div class="ct-title"></div>
         <div class="ct-meta"></div>
-        <div class="ct-bar"><span style="width:${pct * 100}%"></span></div>
+        <div class="ct-bar"><span class="${pct > 0.02 ? 'has-xp' : ''}" style="width:${pct * 100}%"></span></div>
       </div>
       <div class="ct-actions">
         <button class="ct-done-btn${isDone ? ' done' : ''}" aria-label="Marcar como concluída">${isDone ? '✓' : '○'}</button>

@@ -372,12 +372,20 @@ button { font-family: inherit; }
   position: relative;
   overflow: hidden;
 }
-.xp-bar > span::after {
+.xp-bar > span::after,
+.ct-bar > span::after {
   content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
   animation: xp-shine 2.2s linear infinite;
+  animation-play-state: paused;
+  opacity: 0;
+}
+.xp-bar > span.has-xp::after,
+.ct-bar > span.has-xp::after {
+  animation-play-state: running;
+  opacity: 1;
 }
 @keyframes xp-shine {
   from { transform: translateX(-100%); }
@@ -633,13 +641,6 @@ button { font-family: inherit; }
   position: relative;
   overflow: hidden;
 }
-.ct-bar > span::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-  animation: shimmer-bar 2s linear infinite;
-}
-@keyframes shimmer-bar { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .current-task.done .ct-title { text-decoration: line-through; color: var(--muted); }
 .current-task.done .ct-info { opacity: 0.7; }
 
