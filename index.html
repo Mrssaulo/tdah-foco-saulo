@@ -41,10 +41,31 @@
             <span class="player-today" id="playerToday">+0 hoje</span>
           </div>
         </div>
-        <button id="badgesBtn" class="badges-btn" aria-label="Ver conquistas">
-          <span class="bb-icon">🏆</span>
-          <span class="bb-count" id="badgesCount">0</span>
-        </button>
+        <div class="player-actions">
+          <button id="gymBtn" class="gym-btn" aria-label="Marcar academia" title="Marcar academia de hoje">
+            <span class="gb-icon">💪</span>
+            <span class="gb-streak" id="gymStreak">0d</span>
+          </button>
+          <button id="badgesBtn" class="badges-btn" aria-label="Ver conquistas">
+            <span class="bb-icon">🏆</span>
+            <span class="bb-count" id="badgesCount">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Seletor de humor diário -->
+      <div class="mood-block">
+        <div class="mood-head">
+          <span class="mh-label">Como tá hoje?</span>
+          <span class="mh-current" id="moodCurrent"></span>
+        </div>
+        <div class="mood-row" id="moodRow" role="radiogroup" aria-label="Selecione como está se sentindo hoje">
+          <button class="mood-btn" data-mood="tired"   role="radio" aria-label="Cansado">😴</button>
+          <button class="mood-btn" data-mood="ok"      role="radio" aria-label="Bem">🙂</button>
+          <button class="mood-btn" data-mood="focused" role="radio" aria-label="Focado">🔥</button>
+          <button class="mood-btn" data-mood="anxious" role="radio" aria-label="Ansioso">😰</button>
+          <button class="mood-btn" data-mood="low"     role="radio" aria-label="Pra baixo">😞</button>
+        </div>
       </div>
     </section>
 

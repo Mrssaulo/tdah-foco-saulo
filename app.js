@@ -25,6 +25,11 @@ const defaultState = {
   badges: [],         // ['streak-7', 'pomo-10', 'task-50', etc]
   lastActiveDate: null, // YYYY-MM-DD do último acesso (pra calcular streak)
   xpToday: { date: null, amount: 0 }, // XP ganho hoje (reseta à meia-noite)
+  // Humor diário + academia
+  mood: {},           // { 'YYYY-MM-DD': { emoji, at } }
+  gym: {},            // { 'YYYY-MM-DD': true }
+  gymStreak: 0,       // dias seguidos com academia
+  lastGymDate: null,  // última data que marcou academia
 };
 
 // Limites
@@ -102,6 +107,12 @@ const BADGES_DEF = [
   { id: 'reflect-7',      icon: '🪞', name: '7 reflexões',            desc: 'Fez 7 reflexões do dia',              check: s => s.reflectCount >= 7 },
   { id: 'level-5',        icon: '⭐', name: 'Nível 5',                desc: 'Chegou ao nível 5',                   check: s => s.level >= 5 },
   { id: 'level-10',       icon: '👑', name: 'Nível 10',               desc: 'Chegou ao nível máximo',              check: s => s.level >= 10 },
+  // Humor + academia
+  { id: 'mood-1',         icon: '🙂', name: 'Tô bem',                desc: 'Marcou o humor de hoje',              check: s => s.moodCount >= 1 },
+  { id: 'mood-7',         icon: '🪞', name: '7 dias de check-in',    desc: 'Marcou o humor 7 dias',                check: s => s.moodCount >= 7 },
+  { id: 'gym-1',          icon: '💪', name: 'Atleta',                desc: 'Fez academia pela 1ª vez',            check: s => s.gymCount >= 1 },
+  { id: 'gym-7',          icon: '🏋️', name: 'Atleta Dedicado',       desc: '7 dias seguidos de academia',         check: s => s.gymStreak >= 7 },
+  { id: 'gym-30',         icon: '🥇', name: 'Atleta Pro',            desc: '30 dias seguidos de academia',        check: s => s.gymStreak >= 30 },
 ];
 
 function levelFromXp(xp) {
@@ -170,7 +181,10 @@ function computeAggregateCounts() {
       if (setIds.size === items.length) fullRoutines++;
     });
   });
-  return { pomoCount, taskCount, reflectCount, fullRoutines };
+  const moodCount = Object.keys(state.mood || {}).length;
+  const gymCount = Object.values(state.gym || {}).filter(Boolean).length;
+  const gymStreak = state.gymStreak || 0;
+  return { pomoCount, taskCount, reflectCount, fullRoutines, moodCount, gymCount, gymStreak };
 }
 
 function playerState() {
@@ -348,6 +362,88 @@ function openBadgesModal() {
   modal.classList.remove('hidden');
 }
 function closeBadgesModal() { document.getElementById('badgesModal').classList.add('hidden'); }
+
+// ===== Humor diário =====
+const MOODS = {
+  tired:   { emoji: '😴', label: 'Cansado',   color: '#9aa3c8' },
+  ok:      { emoji: '🙂', label: 'Bem',       color: '#4ade80' },
+  focused: { emoji: '🔥', label: 'Focado',    color: '#fbbf24' },
+  anxious: { emoji: '😰', label: 'Ansioso',   color: '#f97316' },
+  low:     { emoji: '😞', label: 'Pra baixo', color: '#a78bfa' },
+};
+
+function setMood(moodKey) {
+  const today = todayKey();
+  state.mood = state.mood || {};
+  const previousMood = state.mood[today];
+  state.mood[today] = { emoji: MOODS[moodKey].emoji, mood: moodKey, at: Date.now() };
+  saveState();
+  renderMood();
+  // XP só na primeira marcação do dia
+  if (!previousMood) {
+    const btn = document.querySelector('.mood-btn[data-mood="' + moodKey + '"]');
+    addXp(5, MOODS[moodKey].label, btn);
+  }
+}
+
+function renderMood() {
+  const today = todayKey();
+  const m = state.mood && state.mood[today];
+  document.querySelectorAll('.mood-btn').forEach(b => b.classList.toggle('selected', m && b.dataset.mood === m.mood));
+  document.getElementById('moodCurrent').textContent = m ? `${m.emoji} ${MOODS[m.mood].label}` : '';
+}
+
+// ===== Academia diária =====
+function toggleGym() {
+  const today = todayKey();
+  state.gym = state.gym || {};
+  const wasDone = !!state.gym[today];
+  if (wasDone) {
+    delete state.gym[today];
+  } else {
+    state.gym[today] = true;
+    state.gymXpAwarded = state.gymXpAwarded || {};
+    if (!state.gymXpAwarded[today]) {
+      state.gymXpAwarded[today] = true;
+      updateGymStreak(true);
+      addXp(20, 'academia', document.getElementById('gymBtn'));
+    }
+  }
+  saveState();
+  renderGym();
+}
+
+function updateGymStreak(justAdded) {
+  // Calcula streak de academia baseado nos dias consecutivos
+  const dates = Object.keys(state.gym).filter(d => state.gym[d]).sort();
+  if (dates.length === 0) { state.gymStreak = 0; state.lastGymDate = null; return; }
+  const lastDate = dates[dates.length - 1];
+  state.lastGymDate = lastDate;
+  // conta streak retroativo: começa em 1 e conta para trás quantos dias consecutivos
+  let streak = 1;
+  let cur = lastDate;
+  for (let i = dates.length - 2; i >= 0; i--) {
+    const prev = dates[i];
+    const [y, m, d] = cur.split('-').map(Number);
+    const prevDate = new Date(y, m - 1, d - 1);
+    const prevKey = prevDate.getFullYear() + '-' + String(prevDate.getMonth() + 1).padStart(2, '0') + '-' + String(prevDate.getDate()).padStart(2, '0');
+    if (prev === prevKey) { streak++; cur = prev; }
+    else break;
+  }
+  state.gymStreak = streak;
+}
+
+function renderGym() {
+  const today = todayKey();
+  const done = !!(state.gym && state.gym[today]);
+  const btn = document.getElementById('gymBtn');
+  btn.classList.toggle('done', done);
+  if (done) {
+    btn.innerHTML = `<span class="gb-icon">💪</span><span class="gb-streak" id="gymStreak">${state.gymStreak || 1}d</span>`;
+  } else {
+    btn.innerHTML = `<span class="gb-icon">💪</span><span class="gb-streak" id="gymStreak">${state.gymStreak || 0}d</span>`;
+  }
+}
 
 // ===== Render: relógio do dia =====
 const DAY_START_MIN = 6 * 60;   // 06:00
@@ -970,6 +1066,8 @@ function renderAll() {
   updatePomodoroLabel();
   renderPomodoro();
   renderPlayer();
+  renderMood();
+  renderGym();
 }
 
 // ===== IA - monta contexto e chama o endpoint =====
@@ -1301,10 +1399,23 @@ function renderStats() {
     const isToday = d.key === todayK;
     const label = shortDayLabel(d.date);
     const pctLabel = d.planned > 0 ? Math.round(d.pct * 100) + '%' : (d.totalCumprido > 0 ? '+' + d.totalCumprido + 'min' : '—');
-    const tooltip = `${label} ${d.key} • planejado ${d.planned}min • cumprido ${d.totalCumprido}min${d.focus ? ' (foco ' + d.focus + 'min)' : ''}`;
+    const mood = state.mood && state.mood[d.key];
+    const gymDone = !!(state.gym && state.gym[d.key]);
+    const moodColor = mood ? MOODS[mood.mood].color : null;
+    const tooltipParts = [`${label} ${d.key}`];
+    tooltipParts.push(`planejado ${d.planned}min`);
+    tooltipParts.push(`cumprido ${d.totalCumprido}min`);
+    if (d.focus) tooltipParts.push(`foco ${d.focus}min`);
+    if (mood) tooltipParts.push(`humor: ${MOODS[mood.mood].label}`);
+    if (gymDone) tooltipParts.push('academia ✓');
+    const tooltip = tooltipParts.join(' • ');
     return `
-      <div class="stat-day${isToday ? ' today' : ''}" title="${tooltip}">
+      <div class="stat-day${isToday ? ' today' : ''}${mood ? ' has-mood' : ''}${gymDone ? ' has-gym' : ''}" title="${tooltip}">
         <div class="stat-day-bar" style="background:${colorForPct(d.pct)}"></div>
+        <div class="stat-day-flair">
+          ${mood ? `<span class="stat-day-mood" style="color:${moodColor}">${mood.emoji}</span>` : ''}
+          ${gymDone ? '<span class="stat-day-gym">💪</span>' : ''}
+        </div>
         <div class="stat-day-label">${label}</div>
         <div class="stat-day-pct">${pctLabel}</div>
       </div>
@@ -1399,6 +1510,14 @@ function bindEvents() {
   // Badges (gamificação)
   document.getElementById('badgesBtn')?.addEventListener('click', openBadgesModal);
   document.getElementById('badgesModalClose')?.addEventListener('click', closeBadgesModal);
+
+  // Humor diário
+  document.querySelectorAll('.mood-btn').forEach(b => {
+    b.addEventListener('click', () => setMood(b.dataset.mood));
+  });
+
+  // Academia
+  document.getElementById('gymBtn')?.addEventListener('click', toggleGym);
 
   // IA
   document.querySelectorAll('.ia-btn').forEach(b => {

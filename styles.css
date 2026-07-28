@@ -1186,3 +1186,138 @@ body {
   from { transform: scale(0); opacity: 0; }
   to   { transform: scale(1); opacity: 1; }
 }
+
+/* ===== Player actions (academia + badges lado a lado) ===== */
+.player-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.gym-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(74, 222, 128, 0.10);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  border-radius: 14px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--good);
+  min-width: 56px;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex-direction: column;
+  gap: 2px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+}
+.gym-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(74, 222, 128, 0.22); }
+.gym-btn:active { transform: scale(0.92); }
+.gym-btn.done {
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.25), rgba(74, 222, 128, 0.12));
+  border-color: rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
+  animation: gym-pulse 2s ease-in-out infinite;
+}
+@keyframes gym-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(74, 222, 128, 0.35); }
+  50%      { box-shadow: 0 0 22px rgba(74, 222, 128, 0.6); }
+}
+.gb-icon { font-size: 20px; line-height: 1; }
+.gb-streak { font-size: 10px; color: var(--good); opacity: 0.85; }
+.gym-btn.done .gb-icon { animation: gym-flex 2.2s ease-in-out infinite; }
+@keyframes gym-flex {
+  0%, 100% { transform: scale(1) rotate(0); }
+  50%      { transform: scale(1.18) rotate(-6deg); }
+}
+
+.badges-btn { min-width: 56px; }
+
+/* ===== Humor diário ===== */
+.mood-block {
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.mood-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.mh-label { color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.mh-current { color: var(--text); font-weight: 700; font-size: 13px; }
+.mood-row {
+  display: flex;
+  gap: 6px;
+}
+.mood-btn {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 8px 0;
+  font-size: 22px;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  position: relative;
+  line-height: 1;
+}
+.mood-btn:hover {
+  transform: translateY(-3px) scale(1.08);
+  background: rgba(255,255,255,0.08);
+}
+.mood-btn.selected {
+  background: linear-gradient(180deg, rgba(108, 140, 255, 0.25), rgba(155, 108, 255, 0.15));
+  border-color: var(--accent);
+  box-shadow: 0 0 14px rgba(108, 140, 255, 0.5), inset 0 0 0 1px rgba(255,255,255,0.1);
+  transform: translateY(-2px) scale(1.05);
+  animation: mood-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mood-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(108, 140, 255, 0.4); }
+  50%      { box-shadow: 0 0 22px rgba(155, 108, 255, 0.65); }
+}
+
+/* ===== Heatmap com humor e academia ===== */
+.stat-day {
+  position: relative;
+}
+.stat-day-flair {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  z-index: 2;
+  pointer-events: none;
+}
+.stat-day-mood {
+  font-size: 14px;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.stat-day-gym {
+  font-size: 11px;
+}
+.stat-day.has-mood .stat-day-label { margin-top: 12px; }
+.stat-day.has-gym .stat-day-bar::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 4px;
+  border: 2px solid rgba(74, 222, 128, 0.5);
+  pointer-events: none;
+  animation: gym-border-pulse 2s ease-in-out infinite;
+}
+@keyframes gym-border-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
