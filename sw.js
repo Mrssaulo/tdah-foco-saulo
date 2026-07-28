@@ -1,5 +1,5 @@
 // Service Worker - cache offline + handlers de notificacao
-const CACHE = 'foco-tdah-v9';
+const CACHE = 'foco-tdah-v10';
 const ASSETS = [
   './',
   './index.html',
