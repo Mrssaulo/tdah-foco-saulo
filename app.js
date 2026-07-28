@@ -854,28 +854,47 @@ function renderInbox() {
 
 // ===== Tabs =====
 function setTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-  document.getElementById('routinesPanel').classList.toggle('hidden', name !== 'routines');
-  document.getElementById('inboxPanel').classList.toggle('hidden', name !== 'inbox');
-  document.getElementById('remindersPanel').classList.toggle('hidden', name !== 'reminders');
-  document.getElementById('iaPanel').classList.toggle('hidden', name !== 'ia');
-  document.getElementById('statsPanel')?.classList.toggle('hidden', name !== 'stats');
-  // Em telas pequenas, esconde o relógio + agenda quando outras tabs estão ativas
-  const small = window.innerWidth < 720;
-  if (small) {
-    document.querySelector('.time-card').classList.toggle('hidden', name !== 'agenda');
-    document.querySelector('.agenda-card').classList.toggle('hidden', name !== 'agenda');
-    document.querySelector('.actions-card').classList.toggle('hidden', name !== 'agenda');
+  // Ativa a aba certa
+  document.querySelectorAll('.bn-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+
+  // Esconde todas as páginas (incluindo a .page-today) e mostra só a ativa
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  let targetEl;
+  if (name === 'agenda') {
+    targetEl = document.querySelector('.page-today');
+  } else {
+    targetEl = document.getElementById(name + 'Panel');
   }
-  // slide-in do painel ativo
-  const activePanel = (name === 'agenda') ? document.querySelector('.agenda-card') : document.getElementById(name + 'Panel');
-  if (activePanel) {
-    activePanel.classList.remove('tab-enter');
-    void activePanel.offsetWidth;
-    activePanel.classList.add('tab-enter');
+  if (targetEl) targetEl.classList.remove('hidden');
+
+  // Slide-in do painel ativo (exceto Hoje, que é a home)
+  if (targetEl && name !== 'agenda') {
+    targetEl.classList.remove('tab-enter');
+    void targetEl.offsetWidth;
+    targetEl.classList.add('tab-enter');
   }
+
+  // Indicator da bottom nav (animação deslizante)
+  moveBnIndicator(name);
+
   if (name === 'stats') renderStats();
   if (name === 'ia') renderIaHistory();
+
+  // scroll pro topo em troca de aba
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function moveBnIndicator(name) {
+  const ind = document.getElementById('bnIndicator');
+  const tab = document.querySelector('.bn-tab[data-tab="' + name + '"]');
+  if (!ind || !tab) return;
+  const nav = tab.parentElement;
+  const tabsArr = Array.from(nav.querySelectorAll('.bn-tab'));
+  const idx = tabsArr.indexOf(tab);
+  if (idx < 0) return;
+  const w = nav.clientWidth / tabsArr.length;
+  ind.style.width = w + 'px';
+  ind.style.transform = 'translateX(' + (idx * w) + 'px)';
 }
 
 // ===== Reset diário das rotinas =====
@@ -1503,7 +1522,7 @@ function bindEvents() {
   document.getElementById('reminderForm').addEventListener('submit', saveReminderFromForm);
   document.getElementById('reminderDelete').addEventListener('click', deleteReminderFromForm);
 
-  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+  document.querySelectorAll('.bn-tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
 
   document.getElementById('clearHistoryBtn')?.addEventListener('click', clearIaHistory);
 

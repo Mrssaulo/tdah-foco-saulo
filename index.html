@@ -3,18 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#0a0e27" />
+  <meta name="description" content="Foco - Calendário TDAH: agenda, pomodoro, rotinas, humor, academia e assistente IA." />
   <title>Foco - Calendário TDAH</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- FX layer (level-up overlay, confete, badges toast, xp flutuante) -->
+  <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
+
+  <!-- Topbar -->
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark"></span>
       <h1>Foco</h1>
+      <span class="brand-tag">TDAH</span>
     </div>
     <div class="topbar-right">
       <span id="clock" class="clock">--:--</span>
@@ -23,190 +32,290 @@
   </header>
 
   <main class="app">
-    <!-- Gamificação: nível + XP + streak + badges -->
-    <section id="playerCard" class="card player-card" aria-label="Progresso">
-      <div class="player-row">
-        <div class="player-avatar" id="playerAvatar">
-          <span class="pa-level" id="playerLevel">1</span>
-          <div class="pa-glow"></div>
-        </div>
-        <div class="player-info">
-          <div class="player-line1">
-            <span class="player-name" id="playerTitle">Iniciante</span>
-            <span class="player-xp" id="playerXpText">0 XP</span>
+
+    <!-- ====== PÁGINA: HOJE ====== -->
+    <section class="page page-today" data-page="agenda">
+
+      <!-- Gamificação (nível + XP + streak + academia + badges) -->
+      <section id="playerCard" class="card glass player-card" aria-label="Seu progresso">
+        <div class="player-row">
+          <div class="player-avatar" id="playerAvatar" data-level="1">
+            <div class="pa-ring"></div>
+            <span class="pa-level" id="playerLevel">1</span>
+            <div class="pa-glow"></div>
           </div>
-          <div class="xp-bar"><span id="playerXpFill"></span></div>
-          <div class="player-line2">
-            <span class="player-streak" id="playerStreak" title="Dias seguidos usando o app"><span class="flame">🔥</span> 0 dias</span>
-            <span class="player-today" id="playerToday">+0 hoje</span>
+          <div class="player-info">
+            <div class="player-line1">
+              <span class="player-name" id="playerTitle">Iniciante</span>
+              <span class="player-xp" id="playerXpText">0 XP</span>
+            </div>
+            <div class="xp-bar"><span id="playerXpFill"></span></div>
+            <div class="player-line2">
+              <span class="player-streak" id="playerStreak" title="Dias seguidos"><span class="flame">🔥</span> <span id="streakNum">0</span> dias</span>
+              <span class="player-today" id="playerToday">+0 hoje</span>
+            </div>
+          </div>
+          <div class="player-actions">
+            <button id="gymBtn" class="gym-btn" aria-label="Marcar academia" title="Marcar academia de hoje">
+              <span class="gb-icon">💪</span>
+              <span class="gb-streak" id="gymStreak">0d</span>
+            </button>
+            <button id="badgesBtn" class="badges-btn" aria-label="Ver conquistas">
+              <span class="bb-icon">🏆</span>
+              <span class="bb-count" id="badgesCount">0</span>
+            </button>
           </div>
         </div>
-        <div class="player-actions">
-          <button id="gymBtn" class="gym-btn" aria-label="Marcar academia" title="Marcar academia de hoje">
-            <span class="gb-icon">💪</span>
-            <span class="gb-streak" id="gymStreak">0d</span>
+
+        <!-- Humor diário -->
+        <div class="mood-block">
+          <div class="mood-head">
+            <span class="mh-label">Como tá hoje?</span>
+            <span class="mh-current" id="moodCurrent"></span>
+          </div>
+          <div class="mood-row" id="moodRow" role="radiogroup" aria-label="Selecione como está se sentindo hoje">
+            <button class="mood-btn" data-mood="tired"   role="radio" aria-label="Cansado"><span class="me">😴</span><span class="ml">Cansado</span></button>
+            <button class="mood-btn" data-mood="ok"      role="radio" aria-label="Bem"><span class="me">🙂</span><span class="ml">Bem</span></button>
+            <button class="mood-btn" data-mood="focused" role="radio" aria-label="Focado"><span class="me">🔥</span><span class="ml">Focado</span></button>
+            <button class="mood-btn" data-mood="anxious" role="radio" aria-label="Ansioso"><span class="me">😰</span><span class="ml">Ansioso</span></button>
+            <button class="mood-btn" data-mood="low"     role="radio" aria-label="Pra baixo"><span class="me">😞</span><span class="ml">Baixo</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Anel do dia -->
+      <section class="card glass time-card" aria-label="Relógio do dia">
+        <div class="day-ring-wrap">
+          <svg class="day-ring" viewBox="0 0 200 200" aria-hidden="true">
+            <circle class="ring-bg" cx="100" cy="100" r="88" />
+            <circle id="dayRingFill" class="ring-fill" cx="100" cy="100" r="88" />
+            <circle id="dayRingPulse" class="ring-pulse" cx="100" cy="100" r="88" />
+          </svg>
+          <div class="day-ring-text">
+            <div id="dayPercent" class="ring-percent">0%</div>
+            <div id="dayLabel" class="ring-label">do dia</div>
+            <div id="dayTimeLeft" class="ring-time">--:-- restantes</div>
+          </div>
+          <div class="day-ring-stars">
+            <div class="drs-star"></div>
+            <div class="drs-star"></div>
+            <div class="drs-star"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Agenda -->
+      <section class="card glass agenda-card" aria-label="Agenda de agora">
+        <header class="card-head">
+          <div>
+            <h2>Agora</h2>
+            <span class="card-sub">Sua tarefa em andamento</span>
+          </div>
+          <button id="newTaskBtn" class="btn-primary" aria-label="Adicionar tarefa">
+            <span class="bpi-icon">+</span><span class="bpi-lbl">Tarefa</span>
           </button>
-          <button id="badgesBtn" class="badges-btn" aria-label="Ver conquistas">
-            <span class="bb-icon">🏆</span>
-            <span class="bb-count" id="badgesCount">0</span>
+        </header>
+        <div id="currentTask" class="current-task empty">
+          <div class="empty-state">
+            <div class="es-icon">🎯</div>
+            <div class="es-text">Nada por agora.</div>
+            <div class="es-sub">Toque em <strong>+ Tarefa</strong> pra começar.</div>
+          </div>
+        </div>
+
+        <h2 class="next-title">Próximo</h2>
+        <ul id="nextTasks" class="next-list"></ul>
+      </section>
+
+      <!-- Ações rápidas -->
+      <section class="card glass actions-card" aria-label="Ações rápidas">
+        <div class="actions-grid">
+          <button id="pomodoroBtn" class="action-tile" aria-label="Abrir pomodoro">
+            <span class="action-icon-wrap"><span class="action-icon">⏱</span></span>
+            <span class="action-label">Pomodoro</span>
+          </button>
+          <button id="captureBtn" class="action-tile" aria-label="Capturar pensamento">
+            <span class="action-icon-wrap"><span class="action-icon">✏️</span></span>
+            <span class="action-label">Capturar</span>
+          </button>
+          <button id="routinesBtn" class="action-tile" aria-label="Abrir rotinas">
+            <span class="action-icon-wrap"><span class="action-icon">☀️</span></span>
+            <span class="action-label">Rotinas</span>
+          </button>
+          <button id="inboxBtn" class="action-tile" aria-label="Abrir caixa de entrada">
+            <span class="action-icon-wrap"><span class="action-icon">📥</span></span>
+            <span class="action-label">Caixa</span>
           </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Seletor de humor diário -->
-      <div class="mood-block">
-        <div class="mood-head">
-          <span class="mh-label">Como tá hoje?</span>
-          <span class="mh-current" id="moodCurrent"></span>
-        </div>
-        <div class="mood-row" id="moodRow" role="radiogroup" aria-label="Selecione como está se sentindo hoje">
-          <button class="mood-btn" data-mood="tired"   role="radio" aria-label="Cansado">😴</button>
-          <button class="mood-btn" data-mood="ok"      role="radio" aria-label="Bem">🙂</button>
-          <button class="mood-btn" data-mood="focused" role="radio" aria-label="Focado">🔥</button>
-          <button class="mood-btn" data-mood="anxious" role="radio" aria-label="Ansioso">😰</button>
-          <button class="mood-btn" data-mood="low"     role="radio" aria-label="Pra baixo">😞</button>
-        </div>
-      </div>
     </section>
 
-    <!-- Relógio do dia + tarefa atual -->
-    <section class="card time-card" aria-label="Relógio do dia">
-      <div class="day-ring-wrap">
-        <svg class="day-ring" viewBox="0 0 200 200" aria-hidden="true">
-          <circle class="ring-bg" cx="100" cy="100" r="88" />
-          <circle id="dayRingFill" class="ring-fill" cx="100" cy="100" r="88" />
-        </svg>
-        <div class="day-ring-text">
-          <div id="dayPercent" class="ring-percent">0%</div>
-          <div id="dayLabel" class="ring-label">do dia</div>
-          <div id="dayTimeLeft" class="ring-time">--:-- restantes</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Agora / Próximo -->
-    <section class="card agenda-card" aria-label="Agenda de agora">
+    <!-- ====== PÁGINA: ROTINAS ====== -->
+    <section id="routinesPanel" class="page card glass hidden" data-page="routines" aria-label="Rotinas">
       <header class="card-head">
-        <h2>Agora</h2>
-        <button id="newTaskBtn" class="btn-primary" aria-label="Adicionar tarefa">+ Tarefa</button>
-      </header>
-      <div id="currentTask" class="current-task empty">
-        <div class="empty-state">Nada por agora. Toque em <strong>+ Tarefa</strong>.</div>
-      </div>
-
-      <h2 class="next-title">Próximo</h2>
-      <ul id="nextTasks" class="next-list"></ul>
-    </section>
-
-    <!-- Ações rápidas: Pomodoro + Captura -->
-    <section class="card actions-card" aria-label="Ações rápidas">
-      <div class="actions-grid">
-        <button id="pomodoroBtn" class="action-tile" aria-label="Iniciar pomodoro">
-          <span class="action-icon">●</span>
-          <span class="action-label">Pomodoro</span>
-        </button>
-        <button id="captureBtn" class="action-tile" aria-label="Capturar pensamento">
-          <span class="action-icon">+</span>
-          <span class="action-label">Capturar</span>
-        </button>
-        <button id="routinesBtn" class="action-tile" aria-label="Abrir rotinas">
-          <span class="action-icon">☀</span>
-          <span class="action-label">Rotinas</span>
-        </button>
-        <button id="inboxBtn" class="action-tile" aria-label="Abrir caixa de entrada">
-          <span class="action-icon">✉</span>
-          <span class="action-label">Caixa</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- Rotinas (visível quando aberto) -->
-    <section id="routinesPanel" class="card routines-card hidden" aria-label="Rotinas">
-      <header class="card-head">
-        <h2>Rotinas</h2>
+        <div>
+          <h2>Rotinas</h2>
+          <span class="card-sub">Manhã, tarde e noite</span>
+        </div>
         <button id="addRoutineBtn" class="btn-ghost">+ Item</button>
       </header>
-      <div class="routine-block">
-        <h3>Manhã</h3>
-        <ul id="routineMorning" class="routine-list"></ul>
-      </div>
-      <div class="routine-block">
-        <h3>Tarde</h3>
-        <ul id="routineAfternoon" class="routine-list"></ul>
-      </div>
-      <div class="routine-block">
-        <h3>Noite</h3>
-        <ul id="routineEvening" class="routine-list"></ul>
+      <div class="routines-grid">
+        <div class="routine-block routine-morning">
+          <h3 class="routine-period"><span class="rp-icon">🌅</span> Manhã</h3>
+          <ul id="routineMorning" class="routine-list"></ul>
+        </div>
+        <div class="routine-block routine-afternoon">
+          <h3 class="routine-period"><span class="rp-icon">☀️</span> Tarde</h3>
+          <ul id="routineAfternoon" class="routine-list"></ul>
+        </div>
+        <div class="routine-block routine-evening">
+          <h3 class="routine-period"><span class="rp-icon">🌙</span> Noite</h3>
+          <ul id="routineEvening" class="routine-list"></ul>
+        </div>
       </div>
     </section>
 
-    <!-- Inbox de capturas -->
-    <section id="inboxPanel" class="card inbox-card hidden" aria-label="Caixa de entrada">
+    <!-- ====== PÁGINA: CAIXA (INBOX) ====== -->
+    <section id="inboxPanel" class="page card glass hidden" data-page="inbox" aria-label="Caixa de entrada">
       <header class="card-head">
-        <h2>Caixa de entrada</h2>
-        <span id="inboxCount" class="badge">0</span>
+        <div>
+          <h2>Caixa de entrada</h2>
+          <span class="card-sub">Tudo que você capturou</span>
+        </div>
+        <span id="inboxCount" class="badge count-badge">0</span>
       </header>
       <ul id="inboxList" class="inbox-list"></ul>
     </section>
 
-    <!-- IA -->
-    <section id="remindersPanel" class="card reminders-card hidden" aria-label="Lembretes de datas">
+    <!-- ====== PÁGINA: DATAS (LEMBRETES) ====== -->
+    <section id="remindersPanel" class="page card glass hidden" data-page="reminders" aria-label="Lembretes de datas">
       <header class="card-head">
-        <h2>Lembretes</h2>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span id="remindersCount" class="badge">0</span>
+        <div>
+          <h2>Lembretes</h2>
+          <span class="card-sub">Datas que importam</span>
+        </div>
+        <div class="head-actions">
+          <span id="remindersCount" class="badge count-badge">0</span>
           <button id="newReminderBtn" class="btn-primary">+ Lembrete</button>
         </div>
       </header>
       <ul id="remindersList" class="reminders-list"></ul>
     </section>
 
-    <!-- IA -->
-    <section id="iaPanel" class="card ia-card hidden" aria-label="Assistente IA">
-      <header class="card-head">
-        <h2>Assistente</h2>
-        <span id="iaStatus" class="badge">pronto</span>
-      </header>
-      <div class="ia-quick">
-        <button class="ia-btn" data-action="now">O que faço agora?</button>
-        <button class="ia-btn" data-action="break">Quebrar tarefa</button>
-        <button class="ia-btn" data-action="triage">Triar caixa</button>
-        <button class="ia-btn" data-action="reflect">Reflexão do dia</button>
-      </div>
-      <form id="iaForm" class="ia-form">
-        <label class="field">
-          <span>Pedido livre</span>
-          <textarea id="iaPrompt" rows="2" maxlength="500" placeholder="Pergunte, peça ajuda, despeje o que vier."></textarea>
-        </label>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">Enviar</button>
-        </div>
-      </form>
-      <div id="iaReply" class="ia-reply hidden"></div>
+    <!-- ====== PÁGINA: SEMANA (ESTATÍSTICAS) ====== -->
+    <section id="statsPanel" class="page card glass hidden" data-page="stats" aria-label="Estatísticas da semana"></section>
 
-      <div class="ia-history-block">
-        <header class="ia-history-head">
+    <!-- ====== PÁGINA: IA ====== -->
+    <section id="iaPanel" class="page ia-page hidden" data-page="ia" aria-label="Assistente IA">
+      <section class="card glass">
+        <header class="card-head">
+          <div>
+            <h2>Assistente</h2>
+            <span class="card-sub">Ajuda rápida para agora</span>
+          </div>
+          <span id="iaStatus" class="badge status-badge status-ready">pronto</span>
+        </header>
+        <div class="ia-quick">
+          <button class="ia-btn" data-action="now">
+            <span class="ia-btn-icon">⚡</span>
+            <span class="ia-btn-text">O que faço agora?</span>
+          </button>
+          <button class="ia-btn" data-action="break">
+            <span class="ia-btn-icon">🧩</span>
+            <span class="ia-btn-text">Quebrar tarefa</span>
+          </button>
+          <button class="ia-btn" data-action="triage">
+            <span class="ia-btn-icon">📥</span>
+            <span class="ia-btn-text">Triar caixa</span>
+          </button>
+          <button class="ia-btn" data-action="reflect">
+            <span class="ia-btn-icon">🪞</span>
+            <span class="ia-btn-text">Reflexão do dia</span>
+          </button>
+        </div>
+        <form id="iaForm" class="ia-form">
+          <label class="field">
+            <span>Pedido livre</span>
+            <textarea id="iaPrompt" rows="2" maxlength="500" placeholder="Pergunte, peça ajuda, despeje o que vier."></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Enviar</button>
+          </div>
+        </form>
+        <div id="iaReply" class="ia-reply hidden"></div>
+      </section>
+
+      <section class="card glass mt-14">
+        <header class="ia-sub-head">
           <h3>Histórico recente</h3>
           <button id="clearHistoryBtn" class="btn-ghost btn-mini">Limpar</button>
         </header>
         <ul id="iaHistoryList" class="ia-history-list"></ul>
         <div id="iaHistoryEmpty" class="ia-empty hidden">Nenhuma conversa registrada ainda.</div>
-      </div>
+      </section>
 
-      <div class="ia-memory-block">
-        <header class="ia-history-head">
+      <section class="card glass mt-14">
+        <header class="ia-sub-head">
           <h3>Memória entre dias</h3>
         </header>
         <ul id="iaMemoryList" class="ia-memory-list"></ul>
         <div id="iaMemoryEmpty" class="ia-empty hidden">A IA ainda não tem memória. Faça uma reflexão ou pergunte algo e ela vai lembrar nas próximas conversas.</div>
-      </div>
+      </section>
     </section>
 
-    <!-- Estatísticas da semana -->
-    <section id="statsPanel" class="card stats-card hidden" aria-label="Estatísticas da semana"></section>
   </main>
 
-  <!-- Modal de lembrete -->
+  <!-- ====== MODAIS ====== -->
+
+  <!-- Tarefa -->
+  <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="taskModalTitle">Nova tarefa</h2>
+        <button id="taskModalClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <form id="taskForm" class="form">
+        <label class="field">
+          <span>Título</span>
+          <input id="taskTitle" type="text" required maxlength="80" placeholder="Ex: Responder e-mails" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Início</span>
+            <input id="taskStart" type="time" required />
+          </label>
+          <label class="field">
+            <span>Duração (min)</span>
+            <input id="taskDuration" type="number" min="5" max="480" value="30" required />
+          </label>
+        </div>
+        <label class="field">
+          <span>Categoria</span>
+          <div class="cat-pills" id="taskCatPills">
+            <button type="button" class="cat-pill" data-cat="trabalho">Trabalho</button>
+            <button type="button" class="cat-pill" data-cat="estudo">Estudo</button>
+            <button type="button" class="cat-pill" data-cat="pessoal">Pessoal</button>
+            <button type="button" class="cat-pill" data-cat="saude">Saúde</button>
+            <button type="button" class="cat-pill" data-cat="descanso">Descanso</button>
+          </div>
+          <select id="taskCategory" class="hidden-select" tabindex="-1">
+            <option value="trabalho">Trabalho</option>
+            <option value="estudo">Estudo</option>
+            <option value="pessoal">Pessoal</option>
+            <option value="saude">Saúde</option>
+            <option value="descanso">Descanso</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" id="taskDelete" class="btn-danger hidden">Excluir</button>
+          <button type="submit" class="btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lembrete -->
   <div id="reminderModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="reminderModalTitle">
     <div class="modal-content">
       <header class="modal-head">
@@ -234,47 +343,7 @@
     </div>
   </div>
 
-  <!-- Modal de tarefa -->
-  <div id="taskModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
-    <div class="modal-content">
-      <header class="modal-head">
-        <h2 id="taskModalTitle">Nova tarefa</h2>
-        <button id="taskModalClose" class="icon-btn" aria-label="Fechar">×</button>
-      </header>
-      <form id="taskForm" class="form">
-        <label class="field">
-          <span>Título</span>
-          <input id="taskTitle" type="text" required maxlength="80" placeholder="Ex: Responder e-mails" />
-        </label>
-        <div class="field-row">
-          <label class="field">
-            <span>Início</span>
-            <input id="taskStart" type="time" required />
-          </label>
-          <label class="field">
-            <span>Duração (min)</span>
-            <input id="taskDuration" type="number" min="5" max="480" value="30" required />
-          </label>
-        </div>
-        <label class="field">
-          <span>Categoria</span>
-          <select id="taskCategory">
-            <option value="trabalho">Trabalho</option>
-            <option value="estudo">Estudo</option>
-            <option value="pessoal">Pessoal</option>
-            <option value="saude">Saúde</option>
-            <option value="descanso">Descanso</option>
-          </select>
-        </label>
-        <div class="form-actions">
-          <button type="button" id="taskDelete" class="btn-danger hidden">Excluir</button>
-          <button type="submit" class="btn-primary">Salvar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Modal de Pomodoro -->
+  <!-- Pomodoro -->
   <div id="pomodoroModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pomodoroTitle">
     <div class="modal-content">
       <header class="modal-head">
@@ -298,25 +367,11 @@
     </div>
   </div>
 
-  <!-- Modal de badges -->
-  <div id="badgesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="badgesTitle">
+  <!-- Captura -->
+  <div id="captureModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="captureTitle">
     <div class="modal-content">
       <header class="modal-head">
-        <h2 id="badgesTitle">Conquistas</h2>
-        <button id="badgesModalClose" class="icon-btn" aria-label="Fechar">×</button>
-      </header>
-      <ul id="badgesList" class="badges-list"></ul>
-    </div>
-  </div>
-
-  <!-- Container de partículas +XP e confete -->
-  <div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
-
-  <!-- Modal de captura -->
-  <div id="captureModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-content">
-      <header class="modal-head">
-        <h2>Capturar</h2>
+        <h2 id="captureTitle">Capturar</h2>
         <button id="captureClose" class="icon-btn" aria-label="Fechar">×</button>
       </header>
       <form id="captureForm" class="form">
@@ -331,13 +386,44 @@
     </div>
   </div>
 
-  <nav class="tabbar" aria-label="Navegação">
-    <button class="tab active" data-tab="agenda">Hoje</button>
-    <button class="tab" data-tab="routines">Rotinas</button>
-    <button class="tab" data-tab="inbox">Caixa</button>
-    <button class="tab" data-tab="reminders">Datas</button>
-    <button class="tab" data-tab="stats">Semana</button>
-    <button class="tab" data-tab="ia">IA</button>
+  <!-- Badges -->
+  <div id="badgesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="badgesTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="badgesTitle">Conquistas</h2>
+        <button id="badgesModalClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <ul id="badgesList" class="badges-list"></ul>
+    </div>
+  </div>
+
+  <!-- ====== NAV INFERIOR ====== -->
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <div class="bn-indicator" id="bnIndicator"></div>
+    <button class="bn-tab active" data-tab="agenda">
+      <span class="bn-icon">🏠</span>
+      <span class="bn-label">Hoje</span>
+    </button>
+    <button class="bn-tab" data-tab="routines">
+      <span class="bn-icon">☀️</span>
+      <span class="bn-label">Rotinas</span>
+    </button>
+    <button class="bn-tab" data-tab="inbox">
+      <span class="bn-icon">📥</span>
+      <span class="bn-label">Caixa</span>
+    </button>
+    <button class="bn-tab" data-tab="reminders">
+      <span class="bn-icon">📅</span>
+      <span class="bn-label">Datas</span>
+    </button>
+    <button class="bn-tab" data-tab="stats">
+      <span class="bn-icon">📊</span>
+      <span class="bn-label">Semana</span>
+    </button>
+    <button class="bn-tab" data-tab="ia">
+      <span class="bn-icon">✨</span>
+      <span class="bn-label">IA</span>
+    </button>
   </nav>
 
   <script src="alarm.js"></script>
