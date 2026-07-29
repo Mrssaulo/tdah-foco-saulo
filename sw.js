@@ -1,5 +1,9 @@
-// Service Worker - offline-first + handlers de notificacao
-const CACHE = 'foco-tdah-v12';
+// Service Worker - offline-first agressivo
+// Garante que o app abre do cache mesmo sem rede.
+// Em paralelo, busca versão nova em background e atualiza o cache pra proxima vez.
+
+const CACHE = 'foco-tdah-v13';
+const PRECACHE = 'foco-tdah-precache-v13';
 const ASSETS = [
   './',
   './index.html',
@@ -10,12 +14,14 @@ const ASSETS = [
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './assets/alarm.wav'
+  './assets/alarm.wav',
+  './offline.html'
 ];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS))
+    caches.open(PRECACHE)
+      .then(c => c.addAll(ASSETS))
       .then(() => self.skipWaiting())
   );
 });
@@ -23,49 +29,43 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE && k !== PRECACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
-// Network-first for HTML so updates propagate, fallback to cache when offline.
-// Cache-first for everything else.
+// Estrategia: cache-first pra tudo (maxima resiliencia offline).
+// Em paralelo tenta network e atualiza o cache pra proxima vez.
+// Se nao tiver no cache E nao tiver rede, devolve offline.html.
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
 
-  // Only handle same-origin requests through the cache strategy
+  const url = new URL(e.request.url);
+  // So atende requisicoes do mesmo origin
   if (url.origin !== self.location.origin) return;
 
-  const isHTML = e.request.headers.get('accept')?.includes('text/html');
-
-  if (isHTML) {
-    // Network first, cache fallback
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
-          }
-          return res;
-        })
-        .catch(() => caches.match('./index.html').then(r => r || caches.match(e.request)))
-    );
-    return;
-  }
-
-  // Cache first for static assets
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(res => {
-        if (res.ok) {
+      const networkFetch = fetch(e.request).then(res => {
+        if (res && res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() => null);
+
+      if (cached) {
+        // Tem no cache: retorna imediato, rede roda em background pra atualizar
+        return cached;
+      }
+      // Nao tem no cache: tenta rede; se cair, devolve offline
+      return networkFetch.then(res => {
+        if (res) return res;
+        if (e.request.headers.get('accept')?.includes('text/html')) {
+          return caches.match('./offline.html');
+        }
+        return new Response('', { status: 504, statusText: 'Offline' });
+      });
     })
   );
 });
@@ -90,4 +90,9 @@ self.addEventListener('message', e => {
       list.forEach(c => c.postMessage({ type: 'shared-text', text: e.data.text }));
     });
   }
+});
+
+// Avisa clientes sobre atualizacao disponivel
+self.addEventListener('message', e => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });

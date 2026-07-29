@@ -2,16 +2,41 @@
   "name": "Foco - Calendário TDAH",
   "short_name": "Foco",
   "description": "Calendário e relógio pensados para TDAH: visão clara do tempo, pomodoro, rotinas e captura rápida.",
-  "start_url": "./index.html",
+  "start_url": "./index.html?source=pwa",
   "scope": "./",
+  "id": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "background_color": "#0b1020",
   "theme_color": "#0f172a",
   "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "lifestyle"],
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ]
+    { "src": "icons/icon.svg",      "sizes": "any",     "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-192.png",  "sizes": "192x192", "type": "image/png",     "purpose": "any maskable" },
+    { "src": "icons/icon-512.png",  "sizes": "512x512", "type": "image/png",     "purpose": "any maskable" },
+    { "src": "icons/icon-192.png",  "sizes": "192x192", "type": "image/png",     "purpose": "monochrome" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Importar mensagem",
+      "short_name": "Importar",
+      "description": "Colar texto do WhatsApp e extrair compromisso",
+      "url": "./index.html?action=import#tasks",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "O que faço agora?",
+      "short_name": "Agora",
+      "description": "Pede ajuda pra IA decidir a proxima acao",
+      "url": "./index.html?action=now#tasks",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [],
+  "edge_side_panel": { "preferred_width": 480 },
+  "launch_handler": { "client_mode": "auto" }
 }

@@ -953,6 +953,56 @@ function consumePendingTasks(jsonStr) {
   }
   setTab('tasks');
 }
+
+// ===== Banner de instalacao PWA =====
+let deferredInstallPrompt = null;
+function setupInstallBanner() {
+  const banner = document.getElementById('installBanner');
+  const btn = document.getElementById('installBtn');
+  const dismiss = document.getElementById('installDismiss');
+  if (!banner || !btn || !dismiss) return;
+
+  // Se ja estiver instalado como PWA, esconde de vez
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  // Se ja foi dispensado antes, respeita
+  if (localStorage.getItem('foco_install_dismissed') === '1') return;
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    banner.classList.remove('hidden');
+  });
+
+  btn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) {
+      // Fallback: instrucoes manuais
+      alert('No menu do Chrome: tres pontos > "Instalar app" ou "Adicionar a tela inicial".');
+      return;
+    }
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      banner.classList.add('hidden');
+    }
+    deferredInstallPrompt = null;
+  });
+
+  dismiss.addEventListener('click', () => {
+    banner.classList.add('hidden');
+    localStorage.setItem('foco_install_dismissed', '1');
+  });
+
+  // Fallback pra desktop/Chrome que nao dispara o evento: mostra depois de 8s
+  setTimeout(() => {
+    if (!deferredInstallPrompt && !isStandalone && !localStorage.getItem('foco_install_dismissed')) {
+      // Em desktop nao vai instalar mesmo. Esconde pra nao poluir.
+      if (!('ontouchstart' in window)) return;
+      banner.classList.remove('hidden');
+    }
+  }, 8000);
+}
 function renderInbox() {
   document.getElementById('inboxCount').textContent = state.inbox.length;
   const ul = document.getElementById('inboxList');
@@ -1827,6 +1877,9 @@ function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
+
+  // Banner de instalacao PWA
+  setupInstallBanner();
 }
 
 document.addEventListener('DOMContentLoaded', init);
