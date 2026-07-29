@@ -920,6 +920,39 @@ function handleSharedText(text) {
   if (!text) return;
   openImportModal(text);
 }
+
+// Recebe JSON de tarefas pendentes vindas do NotificationListenerService nativo.
+// O Android serializa as tarefas em SharedPreferences e abre o app com ?pending=<json>.
+function consumePendingTasks(jsonStr) {
+  let arr;
+  try { arr = JSON.parse(jsonStr); } catch (e) { return; }
+  if (!Array.isArray(arr) || arr.length === 0) return;
+
+  const today = todayKey();
+  let created = 0;
+  for (const ev of arr) {
+    if (!ev || !ev.title) continue;
+    const task = normalizeImportedEvent(ev, ev.note || '');
+    if (task) {
+      state.tasks.push(task);
+      created++;
+    }
+  }
+  if (created > 0) {
+    saveState();
+    renderAll();
+    addXp(XP_REWARDS.capture, 'auto-import', document.querySelector('.ia-btn[data-action="import"]'));
+  }
+  // Mostra um toast resumo se o usuario estiver na pagina IA
+  const replyEl = document.getElementById('iaReply');
+  if (replyEl) {
+    replyEl.classList.remove('hidden', 'error', 'loading');
+    replyEl.textContent = created > 0
+      ? `Capturei ${created} compromisso(s) de mensagens recentes. Ja estao no calendario.`
+      : 'Nenhum compromisso novo foi identificado nas mensagens.';
+  }
+  setTab('tasks');
+}
 function renderInbox() {
   document.getElementById('inboxCount').textContent = state.inbox.length;
   const ul = document.getElementById('inboxList');
@@ -1647,6 +1680,11 @@ function bindEvents() {
     handleSharedText(shared);
     window.history.replaceState({}, '', window.location.pathname);
   }
+  const pending = params.get('pending');
+  if (pending) {
+    consumePendingTasks(pending);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 
   document.getElementById('routinesBtn').addEventListener('click', () => setTab('routines'));
   document.getElementById('inboxBtn').addEventListener('click', () => setTab('inbox'));
@@ -1710,6 +1748,15 @@ function bindEvents() {
     document.getElementById('iaPrompt').value = '';
     callIa('free', { prompt });
   });
+
+  // Captura automatica via notification listener nativo (Android)
+  const autoBtn = document.getElementById('autoCaptureBtn');
+  if (autoBtn) {
+    autoBtn.addEventListener('click', () => {
+      // Tenta abrir a activity nativa de permissao via deep link
+      window.location.href = 'foco://permission';
+    });
+  }
 
   // fechar modal tocando fora
   document.querySelectorAll('.modal').forEach(m => {
