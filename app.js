@@ -13,7 +13,7 @@ const defaultState = {
   routineDone: {},    // { 'YYYY-MM-DD::morning::itemId': true }
   inbox: [],          // { id, text, createdAt }
   reminders: [],      // { id, title, dateKey, note, source, createdAt }
-  pomodoro: { mode: 'focus', totalSec: 25 * 60, remainingSec: 25 * 60, running: false, taskId: null },
+  pomodoro: { mode: 'focus', totalSec: 25 * 60, remainingSec: 25 * 60, running: false, taskId: null, sessionId: null, scheduledFireAt: null },
   lastResetDate: null,
   // taskDone: { 'YYYY-MM-DD::taskId': true } — concluídas hoje
   taskDone: {},
@@ -571,7 +571,134 @@ function toggleTaskDone(taskId) {
   renderAgenda();
 }
 
+// ===== Helpers de alarme nativo =====
+// Agenda alarme nativo para uma tarefa, se estiver no futuro.
+// Funciona com app fechado quando rodando dentro do APK (AlarmManager).
+// Em browser puro, cai no fallback setTimeout dentro de alarm.js.
+function scheduleTaskAlarm(task) {
+  if (!task || !window.FocoAlarm) return;
+  if (!task.dateKey || task.startMinutes == null) return;
+  const [yy, mo, dd] = task.dateKey.split('-').map(Number);
+  const h = Math.floor(task.startMinutes / 60);
+  const m = task.startMinutes % 60;
+  const fireAt = new Date(yy, mo - 1, dd, h, m, 0, 0).getTime();
+  if (fireAt <= Date.now()) return;
+  const lead = task.leadMinutes || 5;
+  const fireAtWithLead = fireAt - lead * 60 * 1000;
+  if (fireAtWithLead <= Date.now()) return;
+  const tag = 'task-' + task.id + '-' + lead + 'min';
+  const hh = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  window.FocoAlarm.scheduleNativeAlarm(
+    fireAtWithLead,
+    'Tarefa em ' + lead + ' min',
+    task.title + ' comeca as ' + hh + ':' + mm,
+    tag
+  );
+}
+
+// Marcos de lembrete: 7/3/1 dias antes + dia (9h). Cada um vira alarme nativo proprio.
+const REMINDER_MILESTONES = [7, 3, 1, 0];
+function scheduleReminderAlarms(reminder) {
+  if (!reminder || !window.FocoAlarm) return;
+  if (!reminder.dateKey || !reminder.title) return;
+  const [yy, mo, dd] = reminder.dateKey.split('-').map(Number);
+  const dateStr = new Date(reminder.dateKey + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+  REMINDER_MILESTONES.forEach(days => {
+    const fireAt = new Date(yy, mo - 1, dd - days, 9, 0, 0, 0).getTime();
+    if (fireAt <= Date.now()) return;
+    const milestone = days === 0 ? 'today' : days + 'd';
+    let title;
+    if (days === 0) title = 'Lembrete: hoje';
+    else if (days === 1) title = 'Lembrete: amanha';
+    else title = 'Lembrete: ' + days + ' dias';
+    const body = reminder.title + ' - ' + dateStr + (reminder.note ? ' (' + reminder.note + ')' : '');
+    window.FocoAlarm.scheduleNativeAlarm(fireAt, title, body, 'reminder-' + reminder.id + '-' + milestone);
+  });
+}
+
+function cancelReminderAlarms(id) {
+  if (!window.FocoAlarm) return;
+  REMINDER_MILESTONES.forEach(days => {
+    const milestone = days === 0 ? 'today' : days + 'd';
+    window.FocoAlarm.nativeCancel('reminder-' + id + '-' + milestone);
+  });
+}
+
+// Rotinas: horarios fixos (8h, 14h, 21h). Aviso dispara +5 min depois se ha itens pendentes.
+const ROUTINE_FIRE_TIMES = {
+  morning: { h: 8, m: 5 },
+  afternoon: { h: 14, m: 5 },
+  evening: { h: 21, m: 5 }
+};
+const ROUTINE_PERIOD_NAMES = { morning: 'manhã', afternoon: 'tarde', evening: 'noite' };
+
+function rescheduleRoutineAlarms() {
+  if (!window.FocoAlarm?.isAndroidTwa()) return;
+  const today = todayKey();
+  const now = Date.now();
+  Object.entries(ROUTINE_FIRE_TIMES).forEach(([period, time]) => {
+    const fireAt = new Date();
+    fireAt.setHours(time.h, time.m, 0, 0);
+    const tag = 'routine-' + period + '-' + today;
+    const items = (state.routines && state.routines[period]) || [];
+    const pending = items.filter(it => !state.routineDone[today + '::' + period + '::' + it.id]);
+    if (pending.length === 0 || fireAt.getTime() <= now) {
+      window.FocoAlarm.nativeCancel(tag);
+      return;
+    }
+    window.FocoAlarm.scheduleNativeAlarm(
+      fireAt.getTime(),
+      'Rotina da ' + ROUTINE_PERIOD_NAMES[period] + ' pendente',
+      pending.length + ' item(s): ' + pending.map(p => p.text).join(', '),
+      tag
+    );
+  });
+}
+
+// Re-agendamento central. Chamado em init, visibilitychange e pageshow.
+// Eh idempotente: scheduleTaskAlarm / scheduleReminderAlarms deduplicam
+// alarmes com mesma tag no NativeAlarmBridge.saveAlarm.
+function rescheduleAllNativeAlarms() {
+  if (!window.FocoAlarm?.isAndroidTwa()) return;
+  const today = todayKey();
+  // 1) Tarefas futuras e de hoje
+  state.tasks.filter(t => (t.dateKey || today) >= today).forEach(scheduleTaskAlarm);
+  // 2) Lembretes: cada um gera 4 alarmes (7d/3d/1d/today)
+  state.reminders.forEach(scheduleReminderAlarms);
+  // 3) Rotinas do dia atual
+  rescheduleRoutineAlarms();
+  // 4) Pomodoro se estiver rodando
+  if (state.pomodoro.running && state.pomodoro.sessionId && state.pomodoro.remainingSec > 0) {
+    const isFocus = state.pomodoro.mode === 'focus';
+    window.FocoAlarm.scheduleNativeAlarm(
+      Date.now() + state.pomodoro.remainingSec * 1000,
+      isFocus ? 'Pomodoro concluido' : 'Pausa encerrada',
+      isFocus ? 'Hora da pausa. Levanta, bebe agua, respira.' : 'Hora de voltar ao foco.',
+      'pomo-' + state.pomodoro.sessionId
+    );
+  }
+}
+
+// Cancela alarmes cujo alvo ja passou (data anterior a hoje). Evita que um
+// alarme agendado "ontem" toque em outro dia depois de um reboot ou re-agendamento.
+function cancelStaleNativeAlarms() {
+  if (!window.FocoAlarm?.isAndroidTwa()) return;
+  const today = todayKey();
+  state.tasks.forEach(t => {
+    if ((t.dateKey || '') < today) {
+      const lead = t.leadMinutes || 5;
+      window.FocoAlarm.nativeCancel('task-' + t.id + '-' + lead + 'min');
+    }
+  });
+  // Lembretes antigos: cancela os 4 marcos (nao tem como saber se ja tocaram)
+  state.reminders.forEach(r => {
+    if ((r.dateKey || '') + '-today' < today) cancelReminderAlarms(r.id);
+  });
+}
+
 // ===== Modal de tarefa =====
+
 function openTaskModal(id) {
   const modal = document.getElementById('taskModal');
   const title = document.getElementById('taskModalTitle');
@@ -587,6 +714,10 @@ function openTaskModal(id) {
     document.getElementById('taskStart').value = formatMin(t.startMinutes);
     document.getElementById('taskDuration').value = t.durationMin;
     document.getElementById('taskCategory').value = t.category;
+    const dateEl = document.getElementById('taskDate');
+    if (dateEl) dateEl.value = t.dateKey || todayKey();
+    const leadEl = document.getElementById('taskLeadMinutes');
+    if (leadEl) leadEl.value = String(t.leadMinutes || 5);
     form.dataset.editId = id;
   } else {
     title.textContent = 'Nova tarefa';
@@ -594,6 +725,10 @@ function openTaskModal(id) {
     const d = new Date();
     d.setMinutes(d.getMinutes() + 5);
     document.getElementById('taskStart').value = formatMin(d.getHours() * 60 + d.getMinutes());
+    const dateEl = document.getElementById('taskDate');
+    if (dateEl) dateEl.value = todayKey();
+    const leadEl = document.getElementById('taskLeadMinutes');
+    if (leadEl) leadEl.value = '5';
     form.dataset.editId = '';
   }
   modal.classList.remove('hidden');
@@ -607,6 +742,9 @@ function saveTaskFromForm(e) {
   const start = document.getElementById('taskStart').value;
   const duration = parseInt(document.getElementById('taskDuration').value, 10);
   const category = document.getElementById('taskCategory').value;
+  const lead = parseInt(document.getElementById('taskLeadMinutes')?.value || '5', 10);
+  const dateEl = document.getElementById('taskDate');
+  const dateKey = dateEl && dateEl.value ? dateEl.value : todayKey();
   if (!title || !start || !duration) return;
   const [h, m] = start.split(':').map(Number);
   const startMinutes = h * 60 + m;
@@ -614,25 +752,20 @@ function saveTaskFromForm(e) {
   let taskId;
   if (editId) {
     const t = state.tasks.find(x => x.id === editId);
-    if (t) { Object.assign(t, { title, startMinutes, durationMin: duration, category }); taskId = t.id; }
+    if (t) {
+      const oldLead = t.leadMinutes || 5;
+      Object.assign(t, { title, startMinutes, durationMin: duration, category, leadMinutes: lead, dateKey });
+      taskId = t.id;
+      // Se lead mudou, cancela alarme antigo antes de criar novo
+      if (oldLead !== lead) {
+        window.FocoAlarm?.nativeCancel('task-' + t.id + '-' + oldLead + 'min');
+      }
+    }
   } else {
     taskId = uid();
-    state.tasks.push({ id: taskId, title, startMinutes, durationMin: duration, category, dateKey: todayKey() });
+    state.tasks.push({ id: taskId, title, startMinutes, durationMin: duration, category, leadMinutes: lead, dateKey });
   }
-  // Agenda alarme nativo 5 min antes (funciona com app fechado se rodando no APK)
-  if (taskId) {
-    const now = new Date();
-    const [yy, mo, dd] = todayKey().split('-').map(Number);
-    const fireAt = new Date(yy, mo - 1, dd, h, m - 5, 0, 0).getTime();
-    if (fireAt > Date.now()) {
-      window.FocoAlarm?.scheduleNativeAlarm(
-        fireAt,
-        'Tarefa em 5 min',
-        title + ' comeca as ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'),
-        'task-' + taskId + '-5min'
-      );
-    }
-  }
+  scheduleTaskAlarm(state.tasks.find(x => x.id === taskId));
   saveState();
   closeTaskModal();
   renderAll();
@@ -640,8 +773,10 @@ function saveTaskFromForm(e) {
 function deleteCurrentTask() {
   const id = document.getElementById('taskForm').dataset.editId;
   if (!id) return;
-  state.tasks = state.tasks.filter(t => t.id !== id);
-  window.FocoAlarm?.nativeCancel('task-' + id + '-5min');
+  const t = state.tasks.find(x => x.id === id);
+  state.tasks = state.tasks.filter(x => x.id !== id);
+  const lead = (t && t.leadMinutes) || 5;
+  window.FocoAlarm?.nativeCancel('task-' + id + '-' + lead + 'min');
   saveState();
   closeTaskModal();
   renderAll();
@@ -657,6 +792,12 @@ function closePomodoro() {
   document.getElementById('pomodoroModal').classList.add('hidden');
 }
 function setPomodoroMode(mode) {
+  // Cancela qualquer alarme nativo agendado antes de mudar de modo
+  if (state.pomodoro.sessionId) {
+    window.FocoAlarm?.nativeCancel('pomo-' + state.pomodoro.sessionId);
+    state.pomodoro.sessionId = null;
+    state.pomodoro.scheduledFireAt = null;
+  }
   const map = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
   state.pomodoro.mode = mode;
   state.pomodoro.totalSec = map[mode];
@@ -696,10 +837,27 @@ function renderPomodoro() {
 }
 function togglePomodoro() {
   if (state.pomodoro.running) {
+    // Pausando: cancela alarme nativo
+    if (state.pomodoro.sessionId) {
+      window.FocoAlarm?.nativeCancel('pomo-' + state.pomodoro.sessionId);
+      state.pomodoro.sessionId = null;
+      state.pomodoro.scheduledFireAt = null;
+    }
     state.pomodoro.running = false;
     clearInterval(timerInterval);
     timerInterval = null;
   } else {
+    // Iniciando: agenda alarme nativo com sessao unica
+    if (!state.pomodoro.sessionId) state.pomodoro.sessionId = uid();
+    const fireAt = Date.now() + state.pomodoro.remainingSec * 1000;
+    state.pomodoro.scheduledFireAt = fireAt;
+    const isFocus = state.pomodoro.mode === 'focus';
+    window.FocoAlarm?.scheduleNativeAlarm(
+      fireAt,
+      isFocus ? 'Pomodoro concluido' : 'Pausa encerrada',
+      isFocus ? 'Hora da pausa. Levanta, bebe agua, respira.' : 'Hora de voltar ao foco.',
+      'pomo-' + state.pomodoro.sessionId
+    );
     state.pomodoro.running = true;
     timerInterval = setInterval(tickPomodoro, 1000);
   }
@@ -715,6 +873,9 @@ function tickPomodoro() {
       state.pomodoro.running = false;
       clearInterval(timerInterval);
       timerInterval = null;
+      // O alarme nativo ja disparou (ou vai disparar). Limpa a sessao.
+      state.pomodoro.sessionId = null;
+      state.pomodoro.scheduledFireAt = null;
       const isFocus = state.pomodoro.mode === 'focus';
       // loga só sessões de foco (não pausas) para estatísticas
       if (isFocus) {
@@ -738,6 +899,11 @@ function tickPomodoro() {
   }
 }
 function resetPomodoro() {
+  if (state.pomodoro.sessionId) {
+    window.FocoAlarm?.nativeCancel('pomo-' + state.pomodoro.sessionId);
+    state.pomodoro.sessionId = null;
+    state.pomodoro.scheduledFireAt = null;
+  }
   state.pomodoro.running = false;
   clearInterval(timerInterval);
   timerInterval = null;
@@ -792,6 +958,8 @@ function renderRoutines() {
       ul.appendChild(li);
     }
   });
+  // Re-agenda alarme nativo conforme itens pendentes
+  rescheduleRoutineAlarms();
 }
 function addRoutineItem() {
   const text = prompt('Adicionar item de rotina:');
@@ -889,6 +1057,7 @@ async function submitImport(e) {
       const task = normalizeImportedEvent(ev, text);
       if (task) {
         state.tasks.push(task);
+        scheduleTaskAlarm(task);
         created++;
       }
     }
@@ -928,6 +1097,7 @@ function normalizeImportedEvent(ev, rawText) {
     durationMin,
     category,
     dateKey: dateStr,
+    leadMinutes: 5,
     source: 'import',
     note: ev.note || rawText.slice(0, 200)
   };
@@ -952,6 +1122,7 @@ function consumePendingTasks(jsonStr) {
     const task = normalizeImportedEvent(ev, ev.note || '');
     if (task) {
       state.tasks.push(task);
+      scheduleTaskAlarm(task);
       created++;
     }
   }
@@ -968,7 +1139,7 @@ function consumePendingTasks(jsonStr) {
       ? `Capturei ${created} compromisso(s) de mensagens recentes. Ja estao no calendario.`
       : 'Nenhum compromisso novo foi identificado nas mensagens.';
   }
-  setTab('tasks');
+  setTab('agenda');
 }
 
 // ===== Banner de instalacao PWA =====
@@ -1233,24 +1404,19 @@ function saveReminderFromForm(e) {
   let remId;
   if (editId) {
     const r = state.reminders.find(x => x.id === editId);
-    if (r) { Object.assign(r, { title, dateKey, note }); remId = r.id; }
+    if (r) {
+      // Cancela alarmes antigos (titulo/data podem ter mudado)
+      cancelReminderAlarms(r.id);
+      Object.assign(r, { title, dateKey, note });
+      remId = r.id;
+    }
   } else {
     remId = uid();
     state.reminders.push({ id: remId, title, dateKey, note, source: 'manual', createdAt: Date.now() });
   }
-  // Agenda alarme nativo no dia do lembrete, 9h da manha
+  // Re-agenda os 4 marcos nativos (7d/3d/1d/today, cada um 9h da manha)
   if (remId) {
-    const [yy, mo, dd] = dateKey.split('-').map(Number);
-    const fireAt = new Date(yy, mo - 1, dd, 9, 0, 0, 0).getTime();
-    if (fireAt > Date.now()) {
-      const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
-      window.FocoAlarm?.scheduleNativeAlarm(
-        fireAt,
-        'Lembrete: ' + title,
-        dateStr + (note ? ' - ' + note : ''),
-        'reminder-' + remId
-      );
-    }
+    scheduleReminderAlarms(state.reminders.find(x => x.id === remId));
   }
   saveState();
   closeReminderModal();
@@ -1264,7 +1430,7 @@ function deleteReminderFromForm() {
 }
 function deleteReminder(id) {
   state.reminders = state.reminders.filter(x => x.id !== id);
-  window.FocoAlarm?.nativeCancel('reminder-' + id);
+  cancelReminderAlarms(id);
   saveState();
   renderAll();
 }
@@ -1888,6 +2054,9 @@ function init() {
   tickClock();
   updateNotifButton();
   window.FocoAlarm?.cleanOldAlerts();
+  // Re-agenda alarmes nativos depois de carregar estado (idempotente)
+  cancelStaleNativeAlarms();
+  rescheduleAllNativeAlarms();
   // Pede permissao de notificacao no primeiro uso (sem bloqueio se negado)
   if (Notification && Notification.permission === 'default') {
     setTimeout(() => {
@@ -1914,6 +2083,20 @@ function init() {
 
   // Banner de instalacao PWA
   setupInstallBanner();
+
+  // Re-agenda alarmes nativos quando o app volta do background (debounce 60s)
+  let lastReschedule = 0;
+  const triggerReschedule = () => {
+    const now = Date.now();
+    if (now - lastReschedule < 60 * 1000) return;
+    lastReschedule = now;
+    cancelStaleNativeAlarms();
+    rescheduleAllNativeAlarms();
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') triggerReschedule();
+  });
+  window.addEventListener('pageshow', triggerReschedule);
 }
 
 document.addEventListener('DOMContentLoaded', init);

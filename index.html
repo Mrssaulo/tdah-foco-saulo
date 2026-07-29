@@ -305,12 +305,28 @@
         </label>
         <div class="field-row">
           <label class="field">
+            <span>Data</span>
+            <input id="taskDate" type="date" required />
+          </label>
+          <label class="field">
             <span>Início</span>
             <input id="taskStart" type="time" required />
           </label>
+        </div>
+        <div class="field-row">
           <label class="field">
             <span>Duração (min)</span>
             <input id="taskDuration" type="number" min="5" max="480" value="30" required />
+          </label>
+          <label class="field">
+            <span>Avisar antes</span>
+            <select id="taskLeadMinutes">
+              <option value="5">5 min</option>
+              <option value="10">10 min</option>
+              <option value="15">15 min</option>
+              <option value="30">30 min</option>
+              <option value="60">1 hora</option>
+            </select>
           </label>
         </div>
         <label class="field">

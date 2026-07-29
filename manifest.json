@@ -38,5 +38,15 @@
   ],
   "screenshots": [],
   "edge_side_panel": { "preferred_width": 480 },
-  "launch_handler": { "client_mode": "auto" }
+  "launch_handler": { "client_mode": "auto" },
+  "share_target": {
+    "action": "./index.html?action=shared",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
