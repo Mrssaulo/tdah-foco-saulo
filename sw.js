@@ -2,8 +2,8 @@
 // Garante que o app abre do cache mesmo sem rede.
 // Em paralelo, busca versão nova em background e atualiza o cache pra proxima vez.
 
-const CACHE = 'foco-tdah-v13';
-const PRECACHE = 'foco-tdah-precache-v13';
+const CACHE = 'foco-tdah-v14';
+const PRECACHE = 'foco-tdah-precache-v14';
 const ASSETS = [
   './',
   './index.html',

@@ -3,6 +3,45 @@
 
 const ALARM_SOUND_URL = 'assets/alarm.wav';
 
+// ===== Bridge nativo Android (TWA) =====
+// Quando rodando dentro do APK (Trusted Web Activity), o Chrome abre uma
+// intent "foco://..." que acorda o AlarmGatewayActivity, que agenda via
+// AlarmManager nativo. Isso garante disparo MESMO COM APP FECHADO.
+// Em browser puro, cai no fallback setTimeout.
+function isAndroidTwa() {
+  try {
+    return !!(window.FocoNative && navigator.userAgent && /Android/i.test(navigator.userAgent));
+  } catch (e) { return false; }
+}
+
+function nativeSchedule(timestampMs, title, body, tag) {
+  if (!isAndroidTwa()) return false;
+  try {
+    const t = encodeURIComponent(title || 'Foco');
+    const b = encodeURIComponent(body || '');
+    const tg = encodeURIComponent(tag || ('foco-' + timestampMs));
+    // dispara a intent. Chrome no TWA abre AlarmGatewayActivity e fecha na hora.
+    window.location.href = 'foco://schedule?ts=' + timestampMs +
+      '&title=' + t + '&body=' + b + '&tag=' + tg;
+    return true;
+  } catch (e) { return false; }
+}
+
+function nativeCancel(tag) {
+  if (!isAndroidTwa()) return false;
+  try {
+    const tg = encodeURIComponent(tag);
+    window.location.href = 'foco://cancel?tag=' + tg;
+    return true;
+  } catch (e) { return false; }
+}
+
+function nativeCancelAll() {
+  if (!isAndroidTwa()) return false;
+  try { window.location.href = 'foco://cancelall'; return true; }
+  catch (e) { return false; }
+}
+
 // Solicita permissao de notificacao. Retorna true se concedida.
 async function ensureNotificationPermission() {
   if (!('Notification' in window)) return false;
@@ -62,6 +101,19 @@ function scheduleAlarm(delayMs, title, body, opts = {}) {
     return null;
   }
   return setTimeout(() => fireAlarm(title, body, opts), delayMs);
+}
+
+// Agenda alarme em horario absoluto (timestamp ms). Funciona com app fechado
+// se rodando dentro do APK (AlarmManager nativo). Em browser, usa setTimeout.
+function scheduleNativeAlarm(timestampMs, title, body, tag) {
+  if (!tag) tag = 'foco-' + timestampMs;
+  if (isAndroidTwa()) {
+    nativeSchedule(timestampMs, title, body, tag);
+    return { tag, mode: 'native' };
+  }
+  const delay = Math.max(0, timestampMs - Date.now());
+  const id = setTimeout(() => fireAlarm(title, body, { tag }), delay);
+  return { tag, mode: 'fallback', id };
 }
 
 // ===== Verificador periodico (chamado a cada 30s pelo app) =====
@@ -180,6 +232,11 @@ window.FocoAlarm = {
   ensureNotificationPermission,
   fireAlarm,
   scheduleAlarm,
+  scheduleNativeAlarm,
+  nativeSchedule,
+  nativeCancel,
+  nativeCancelAll,
+  isAndroidTwa,
   playAlarm,
   vibrate,
   checkUpcomingTasks,

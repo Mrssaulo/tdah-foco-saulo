@@ -611,11 +611,27 @@ function saveTaskFromForm(e) {
   const [h, m] = start.split(':').map(Number);
   const startMinutes = h * 60 + m;
   const editId = form.dataset.editId;
+  let taskId;
   if (editId) {
     const t = state.tasks.find(x => x.id === editId);
-    if (t) Object.assign(t, { title, startMinutes, durationMin: duration, category });
+    if (t) { Object.assign(t, { title, startMinutes, durationMin: duration, category }); taskId = t.id; }
   } else {
-    state.tasks.push({ id: uid(), title, startMinutes, durationMin: duration, category, dateKey: todayKey() });
+    taskId = uid();
+    state.tasks.push({ id: taskId, title, startMinutes, durationMin: duration, category, dateKey: todayKey() });
+  }
+  // Agenda alarme nativo 5 min antes (funciona com app fechado se rodando no APK)
+  if (taskId) {
+    const now = new Date();
+    const [yy, mo, dd] = todayKey().split('-').map(Number);
+    const fireAt = new Date(yy, mo - 1, dd, h, m - 5, 0, 0).getTime();
+    if (fireAt > Date.now()) {
+      window.FocoAlarm?.scheduleNativeAlarm(
+        fireAt,
+        'Tarefa em 5 min',
+        title + ' comeca as ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'),
+        'task-' + taskId + '-5min'
+      );
+    }
   }
   saveState();
   closeTaskModal();
@@ -625,6 +641,7 @@ function deleteCurrentTask() {
   const id = document.getElementById('taskForm').dataset.editId;
   if (!id) return;
   state.tasks = state.tasks.filter(t => t.id !== id);
+  window.FocoAlarm?.nativeCancel('task-' + id + '-5min');
   saveState();
   closeTaskModal();
   renderAll();
@@ -1213,11 +1230,27 @@ function saveReminderFromForm(e) {
   const note = document.getElementById('reminderNote').value.trim();
   if (!title || !dateKey) return;
   const editId = document.getElementById('reminderForm').dataset.editId;
+  let remId;
   if (editId) {
     const r = state.reminders.find(x => x.id === editId);
-    if (r) Object.assign(r, { title, dateKey, note });
+    if (r) { Object.assign(r, { title, dateKey, note }); remId = r.id; }
   } else {
-    state.reminders.push({ id: uid(), title, dateKey, note, source: 'manual', createdAt: Date.now() });
+    remId = uid();
+    state.reminders.push({ id: remId, title, dateKey, note, source: 'manual', createdAt: Date.now() });
+  }
+  // Agenda alarme nativo no dia do lembrete, 9h da manha
+  if (remId) {
+    const [yy, mo, dd] = dateKey.split('-').map(Number);
+    const fireAt = new Date(yy, mo - 1, dd, 9, 0, 0, 0).getTime();
+    if (fireAt > Date.now()) {
+      const dateStr = new Date(dateKey + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+      window.FocoAlarm?.scheduleNativeAlarm(
+        fireAt,
+        'Lembrete: ' + title,
+        dateStr + (note ? ' - ' + note : ''),
+        'reminder-' + remId
+      );
+    }
   }
   saveState();
   closeReminderModal();
@@ -1231,6 +1264,7 @@ function deleteReminderFromForm() {
 }
 function deleteReminder(id) {
   state.reminders = state.reminders.filter(x => x.id !== id);
+  window.FocoAlarm?.nativeCancel('reminder-' + id);
   saveState();
   renderAll();
 }
