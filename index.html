@@ -235,6 +235,10 @@
             <span class="ia-btn-icon">🪞</span>
             <span class="ia-btn-text">Reflexão do dia</span>
           </button>
+          <button class="ia-btn" data-action="import">
+            <span class="ia-btn-icon">💬</span>
+            <span class="ia-btn-text">Importar mensagem</span>
+          </button>
         </div>
         <form id="iaForm" class="ia-form">
           <label class="field">
@@ -366,6 +370,28 @@
           <button data-mode="long" class="mode-btn">Pausa 15</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Importar mensagem (WhatsApp, Telegram, etc.) -->
+  <div id="importModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <div class="modal-content">
+      <header class="modal-head">
+        <h2 id="importTitle">Importar mensagem</h2>
+        <button id="importClose" class="icon-btn" aria-label="Fechar">×</button>
+      </header>
+      <form id="importForm" class="form">
+        <p class="form-hint">Cole aqui uma mensagem do WhatsApp ou de outro app. A IA identifica datas, horários e compromissos e cria o evento pra você.</p>
+        <label class="field">
+          <span>Texto da mensagem</span>
+          <textarea id="importText" rows="6" maxlength="2000" placeholder="Ex: reunião com cliente quinta 15h, levar proposta" autofocus></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" id="importClear" class="btn-ghost">Limpar</button>
+          <button type="submit" id="importSubmit" class="btn-primary">Extrair e salvar</button>
+        </div>
+        <div id="importStatus" class="import-status hidden"></div>
+      </form>
     </div>
   </div>
 

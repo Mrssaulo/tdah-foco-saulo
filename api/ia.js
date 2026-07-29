@@ -83,6 +83,15 @@ ${recentHistory}
       return base + `Reflexão do dia, baseada no relato abaixo. Estruture em: (a) o que foi bem, (b) o que travou, (c) UM ajuste para amanhã. Máximo 12 linhas.\n\nRelato: ${c.relato || '(vazio)'}`;
     case 'free':
       return base + `Pedido livre do Saulo: ${c.prompt || ''}`;
+    case 'import':
+      return base + `Analise a mensagem abaixo (geralmente do WhatsApp). Extraia todos os compromissos, tarefas ou lembretes com data, horário e local quando houver. Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem comentario, sem texto antes ou depois) no formato:
+
+{"events":[{"title":"...","date":"YYYY-MM-DD","time":"HH:MM","durationMin":30,"category":"trabalho|pro-futebol|marketing|pessoal|saude|estudo","note":"..."}],"summary":"frase curta descrevendo o que a mensagem diz"}
+
+Use horarios em America/Sao_Paulo. Se nao houver compromisso claro, devolva {"events":[],"summary":"sem compromisso detectavel"}. Duracao padrao 30min se nao souber. Hoje: ${dateStr} ${timeStr}.
+
+Mensagem:
+${c.prompt || ''}`;
     default:
       return base + (c.prompt || '');
   }
@@ -143,7 +152,7 @@ module.exports = async function handler(req, res) {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 600,
+        max_tokens: action === 'import' ? 800 : 600,
         temperature: 0.6
       })
     });

@@ -810,6 +810,116 @@ function saveCapture(e) {
   renderInbox();
   closeCapture();
 }
+
+// ===== Importar mensagem (WhatsApp, etc.) =====
+function openImportModal(prefill) {
+  const modal = document.getElementById('importModal');
+  const ta = document.getElementById('importText');
+  const status = document.getElementById('importStatus');
+  ta.value = prefill || '';
+  status.classList.add('hidden');
+  status.classList.remove('success', 'error');
+  status.textContent = '';
+  modal.classList.remove('hidden');
+  setTimeout(() => ta.focus(), 100);
+}
+function closeImport() { document.getElementById('importModal').classList.add('hidden'); }
+
+function setImportStatus(msg, kind) {
+  const status = document.getElementById('importStatus');
+  status.classList.remove('hidden', 'success', 'error');
+  if (kind) status.classList.add(kind);
+  status.textContent = msg;
+}
+
+async function submitImport(e) {
+  e.preventDefault();
+  const text = document.getElementById('importText').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('importSubmit');
+  btn.disabled = true;
+  btn.textContent = 'Extraindo...';
+  setImportStatus('Lendo mensagem e identificando compromissos...', null);
+
+  try {
+    const r = await fetch('/api/ia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'import', context: { prompt: text } })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Erro ' + r.status);
+
+    // Tenta extrair JSON da resposta (pode vir com texto em volta)
+    const reply = (data.reply || '').trim();
+    const jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      setImportStatus('A IA nao conseguiu extrair um compromisso claro dessa mensagem.', 'error');
+      return;
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    const events = Array.isArray(parsed.events) ? parsed.events : [];
+    if (events.length === 0) {
+      setImportStatus((parsed.summary || 'Nenhum compromisso detectado.') + '\n\nSalvei a mensagem na caixa de entrada pra revisar depois.', null);
+      state.inbox.unshift({ id: uid(), text, createdAt: Date.now() });
+      saveState();
+      renderInbox();
+      return;
+    }
+
+    let created = 0;
+    for (const ev of events) {
+      const task = normalizeImportedEvent(ev, text);
+      if (task) {
+        state.tasks.push(task);
+        created++;
+      }
+    }
+    saveState();
+    renderAll();
+
+    const summary = parsed.summary ? parsed.summary + '\n\n' : '';
+    setImportStatus(
+      summary + `Criei ${created} tarefa(s) no calendario de hoje${created > 0 ? '.' : '.'}`,
+      'success'
+    );
+    addXp(XP_REWARDS.capture, 'import', document.querySelector('.ia-btn[data-action="import"]'));
+  } catch (err) {
+    setImportStatus('Erro: ' + (err.message || err) + '\n\nVoce pode copiar a mensagem e adicionar manualmente.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Extrair e salvar';
+  }
+}
+
+function normalizeImportedEvent(ev, rawText) {
+  if (!ev || !ev.title) return null;
+  const dateStr = ev.date;
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  let startMinutes = 9 * 60; // padrao 9h
+  if (ev.time && /^\d{2}:\d{2}$/.test(ev.time)) {
+    const [h, m] = ev.time.split(':').map(Number);
+    startMinutes = h * 60 + m;
+  }
+  const validCategories = ['trabalho', 'pro-futebol', 'marketing', 'pessoal', 'saude', 'estudo'];
+  const category = validCategories.includes(ev.category) ? ev.category : 'pessoal';
+  const durationMin = (typeof ev.durationMin === 'number' && ev.durationMin > 0) ? Math.min(ev.durationMin, 240) : 30;
+  return {
+    id: uid(),
+    title: String(ev.title).slice(0, 120),
+    startMinutes,
+    durationMin,
+    category,
+    dateKey: dateStr,
+    source: 'import',
+    note: ev.note || rawText.slice(0, 200)
+  };
+}
+
+function handleSharedText(text) {
+  if (!text) return;
+  openImportModal(text);
+}
 function renderInbox() {
   document.getElementById('inboxCount').textContent = state.inbox.length;
   const ul = document.getElementById('inboxList');
@@ -1513,6 +1623,31 @@ function bindEvents() {
   document.getElementById('captureClose').addEventListener('click', closeCapture);
   document.getElementById('captureForm').addEventListener('submit', saveCapture);
 
+  // Importar mensagem
+  document.getElementById('importClose').addEventListener('click', closeImport);
+  document.getElementById('importClear').addEventListener('click', () => {
+    document.getElementById('importText').value = '';
+    document.getElementById('importStatus').classList.add('hidden');
+    document.getElementById('importText').focus();
+  });
+  document.getElementById('importForm').addEventListener('submit', submitImport);
+
+  // Recebe texto compartilhado de outros apps via share intent
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'shared-text' && e.data.text) {
+        handleSharedText(e.data.text);
+      }
+    });
+  }
+  // Tambem checa a URL (caso o share intent tenha passado por querystring)
+  const params = new URLSearchParams(window.location.search);
+  const shared = params.get('shared');
+  if (shared) {
+    handleSharedText(shared);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
   document.getElementById('routinesBtn').addEventListener('click', () => setTab('routines'));
   document.getElementById('inboxBtn').addEventListener('click', () => setTab('inbox'));
   document.getElementById('addRoutineBtn').addEventListener('click', addRoutineItem);
@@ -1565,6 +1700,7 @@ function bindEvents() {
         if (!target) return;
         return callIa('break', { target });
       }
+      if (action === 'import') return openImportModal();
     });
   });
   document.getElementById('iaForm').addEventListener('submit', e => {

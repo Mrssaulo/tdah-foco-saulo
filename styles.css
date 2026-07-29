@@ -1700,3 +1700,23 @@ button { font-family: inherit; }
   .bn-label { font-size: 8px; }
   .ring-percent { font-size: 32px; }
 }
+
+.form-hint {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0 0 12px;
+  line-height: 1.55;
+}
+.import-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.import-status.success { border-color: rgba(94, 234, 212, 0.45); background: rgba(94, 234, 212, 0.08); }
+.import-status.error { border-color: rgba(248, 113, 113, 0.45); background: rgba(248, 113, 113, 0.08); }
